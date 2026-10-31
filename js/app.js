@@ -10,12 +10,10 @@ import {
 import { firebaseConfig, escola, configurado } from "./firebase-config.js";
 import { iniciarQuestoes } from "./questoes.js";
 import { iniciarBanco } from "./banco.js";
-import { iniciarImportacao } from "./importacao.js";
+import { iniciarEquipe } from "./equipe.js";
+import { $, $$, rotuloCargo } from "./util.js";
 
 // ---------- Utilidades ----------
-const $ = (seletor, raiz = document) => raiz.querySelector(seletor);
-const $$ = (seletor, raiz = document) => Array.from(raiz.querySelectorAll(seletor));
-
 const ERROS_AUTH = {
   "auth/invalid-email": "O e-mail informado não é válido.",
   "auth/invalid-credential": "E-mail ou senha incorretos.",
@@ -33,17 +31,17 @@ function mensagemDeErro(erro) {
 }
 
 function aviso(texto, tipo = "ok") {
-  const el = $("#toast");
-  el.textContent = texto;
-  el.className = "toast " + (tipo === "erro" ? "toast-erro" : "toast-ok") + " toast-visivel";
+  const caixa = $("#toast");
+  caixa.textContent = texto;
+  caixa.className = "toast " + (tipo === "erro" ? "toast-erro" : "toast-ok") + " toast-visivel";
   clearTimeout(aviso.timer);
-  aviso.timer = setTimeout(() => el.classList.remove("toast-visivel"), 3800);
+  aviso.timer = setTimeout(() => caixa.classList.remove("toast-visivel"), 3800);
 }
 
 function mostrarErroForm(idForm, texto) {
-  const el = $(`#${idForm} [data-erro]`);
-  el.textContent = texto || "";
-  el.classList.toggle("hidden", !texto);
+  const caixa = $(`#${idForm} [data-erro]`);
+  caixa.textContent = texto || "";
+  caixa.classList.toggle("hidden", !texto);
 }
 
 function carregando(botao, ativo, textoOriginal) {
@@ -51,17 +49,17 @@ function carregando(botao, ativo, textoOriginal) {
   botao.textContent = ativo ? "Aguarde…" : textoOriginal;
 }
 
-const ROTULO_CARGO = { professor: "Professor(a)", supervisor: "Coordenador(a) / Supervisor(a)" };
-
 // ---------- Estado ----------
 const estado = { usuario: null, perfil: null, cadastrando: false };
 let auth = null;
 let db = null;
 let banco = null;
+let equipe = null;
 
 // ---------- Auditoria ----------
+// Só contas ativas conseguem gravar (as regras do Firestore exigem).
 export async function registrarAuditoria(acao, detalhes = {}) {
-  if (!db || !estado.usuario || !estado.perfil) return;
+  if (!db || !estado.usuario || !estado.perfil || estado.perfil.ativo !== true) return;
   try {
     await addDoc(collection(db, "auditoria"), {
       acao,
@@ -77,44 +75,62 @@ export async function registrarAuditoria(acao, detalhes = {}) {
 }
 
 // ---------- Telas ----------
+function esconderTelas() {
+  ["#tela-login", "#tela-pendente", "#tela-app"].forEach((id) => $(id).classList.add("hidden"));
+}
+
 function mostrarLogin() {
+  esconderTelas();
   $("#tela-login").classList.remove("hidden");
-  $("#tela-app").classList.add("hidden");
 }
 
-function mostrarApp() {
-  $("#tela-login").classList.add("hidden");
-  $("#tela-app").classList.remove("hidden");
-
-  const { nome, cargo } = estado.perfil;
-  $$("[data-nome-usuario]").forEach((el) => (el.textContent = nome));
-  $$("[data-cargo-usuario]").forEach((el) => (el.textContent = ROTULO_CARGO[cargo] || cargo));
-  $$("[data-inicial-usuario]").forEach((el) => (el.textContent = nome.trim().charAt(0).toUpperCase()));
-  $$("[data-escola]").forEach((el) => (el.textContent = escola.nome));
-
-  const ehSupervisor = cargo === "supervisor";
-  $$(".so-supervisor").forEach((el) => el.classList.toggle("hidden", !ehSupervisor));
-
-  navegar();
-  carregarResumo();
-  if (banco && location.hash === "#banco") banco.carregar();
+function mostrarPendente() {
+  esconderTelas();
+  $("#tela-pendente").classList.remove("hidden");
+  const desativada = Boolean(estado.perfil && estado.perfil.desativadoEm);
+  $("#pendente-titulo").textContent = desativada ? "Sua conta está desativada" : "Sua conta aguarda liberação";
+  $("#pendente-texto").textContent = desativada
+    ? "Procure a coordenação da escola para reativar o seu acesso."
+    : "Para proteger as provas da escola, a coordenação precisa liberar cada conta nova. Avise o Supervisor de que você se cadastrou e toque em “Verificar de novo”.";
+  $("#pendente-quem").textContent = estado.perfil ? `${estado.perfil.nome} (${estado.perfil.email})` : "";
 }
 
-const VIEWS = ["inicio", "banco", "nova", "importar", "provas", "acessibilidade", "auditoria"];
+const VIEWS = ["inicio", "banco", "nova", "provas", "acessibilidade", "equipe", "auditoria"];
+const SO_SUPERVISOR = ["equipe", "auditoria"];
 
 function navegar() {
   let nome = location.hash.replace("#", "");
   if (!VIEWS.includes(nome)) nome = "inicio";
-  if (nome === "auditoria" && (!estado.perfil || estado.perfil.cargo !== "supervisor")) nome = "inicio";
+  const ehSupervisor = estado.perfil && estado.perfil.cargo === "supervisor";
+  if (SO_SUPERVISOR.includes(nome) && !ehSupervisor) nome = "inicio";
 
-  $$("[data-view]").forEach((el) => el.classList.toggle("hidden", el.dataset.view !== nome));
-  $$("[data-nav]").forEach((el) => {
-    const ativo = el.dataset.nav === nome;
-    el.classList.toggle("nav-ativo", ativo);
-    if (ativo) el.setAttribute("aria-current", "page");
-    else el.removeAttribute("aria-current");
+  $$("[data-view]").forEach((secao) => secao.classList.toggle("hidden", secao.dataset.view !== nome));
+  $$("[data-nav]").forEach((link) => {
+    const ativo = link.dataset.nav === nome;
+    link.classList.toggle("nav-ativo", ativo);
+    if (ativo) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
   });
   window.scrollTo({ top: 0 });
+}
+
+function mostrarApp() {
+  esconderTelas();
+  $("#tela-app").classList.remove("hidden");
+
+  const { nome, cargo } = estado.perfil;
+  $$("[data-nome-usuario]").forEach((e) => (e.textContent = nome));
+  $$("[data-cargo-usuario]").forEach((e) => (e.textContent = rotuloCargo(cargo)));
+  $$("[data-inicial-usuario]").forEach((e) => (e.textContent = nome.trim().charAt(0).toUpperCase()));
+  $$("[data-escola]").forEach((e) => (e.textContent = escola.nome));
+
+  const ehSupervisor = cargo === "supervisor";
+  $$(".so-supervisor").forEach((e) => e.classList.toggle("hidden", !ehSupervisor));
+
+  navegar();
+  carregarResumo();
+  if (banco && location.hash === "#banco") banco.carregar();
+  if (equipe && location.hash === "#equipe") equipe.carregar();
 }
 
 async function carregarResumo() {
@@ -123,17 +139,36 @@ async function carregarResumo() {
   const alvoMinhas = $("#res-minhas");
   try {
     const col = collection(db, "questoes");
+    const uid = estado.usuario.uid;
     const [total, pendentes, minhas] = await Promise.all([
       getCountFromServer(col),
       getCountFromServer(query(col, where("statusValidacao", "==", "pendente"))),
-      getCountFromServer(query(col, where("criadoPorUid", "==", estado.usuario.uid)))
+      getCountFromServer(query(col, where("responsavelUid", "==", uid)))
     ]);
     alvoTotal.textContent = total.data().count;
     alvoPendentes.textContent = pendentes.data().count;
     alvoMinhas.textContent = minhas.data().count;
   } catch (e) {
     console.warn("Resumo indisponível:", e);
-    [alvoTotal, alvoPendentes, alvoMinhas].forEach((el) => (el.textContent = "0"));
+    [alvoTotal, alvoPendentes, alvoMinhas].forEach((e2) => (e2.textContent = "0"));
+  }
+
+  // Aviso de contas novas para o Supervisor
+  const aviso_contas = $("#aviso-contas");
+  aviso_contas.classList.add("hidden");
+  if (estado.perfil && estado.perfil.cargo === "supervisor") {
+    try {
+      const novas = await getCountFromServer(query(collection(db, "users"), where("ativo", "==", false)));
+      const quantidade = novas.data().count;
+      if (quantidade > 0) {
+        $("#aviso-contas-texto").textContent = quantidade === 1
+          ? "1 conta aguarda liberação."
+          : `${quantidade} contas aguardam liberação.`;
+        aviso_contas.classList.remove("hidden");
+      }
+    } catch (e) {
+      console.warn("Contagem de contas indisponível:", e);
+    }
   }
 }
 
@@ -143,14 +178,28 @@ async function carregarPerfil(user) {
   const snap = await getDoc(ref);
   if (snap.exists()) return snap.data();
 
+  // Conta sem perfil (ex.: criada pelo Console): entra como Professor, aguardando liberação.
   const perfil = {
     nome: user.displayName || user.email.split("@")[0],
     email: user.email,
     cargo: "professor",
+    ativo: false,
     criadoEm: serverTimestamp()
   };
   await setDoc(ref, perfil);
   return { ...perfil, criadoEm: null };
+}
+
+async function entrar(user) {
+  estado.usuario = user;
+  estado.perfil = await carregarPerfil(user);
+
+  if (estado.perfil.ativo !== true) {
+    mostrarPendente();
+    return;
+  }
+  mostrarApp();
+  await registrarAuditoria("login");
 }
 
 // ---------- Formulários ----------
@@ -204,14 +253,13 @@ function configurarFormularios() {
         nome,
         email,
         cargo: "professor",
+        ativo: false,
         criadoEm: serverTimestamp()
       });
       estado.usuario = cred.user;
-      estado.perfil = { nome, email, cargo: "professor" };
-      await registrarAuditoria("conta_criada", { email });
+      estado.perfil = { nome, email, cargo: "professor", ativo: false };
       estado.cadastrando = false;
-      mostrarApp();
-      aviso("Conta criada. Bem-vindo(a)!");
+      mostrarPendente();
     } catch (e) {
       estado.cadastrando = false;
       mostrarErroForm("form-cadastrar", mensagemDeErro(e));
@@ -232,6 +280,20 @@ function configurarFormularios() {
       aviso("Enviamos o link de redefinição para o seu e-mail.");
     } catch (e) {
       mostrarErroForm("form-entrar", mensagemDeErro(e));
+    }
+  });
+
+  $("#btn-verificar").addEventListener("click", async () => {
+    const botao = $("#btn-verificar");
+    carregando(botao, true, "Verificar de novo");
+    try {
+      await entrar(auth.currentUser);
+      if (estado.perfil.ativo !== true) aviso("Sua conta ainda não foi liberada.", "erro");
+    } catch (e) {
+      console.error(e);
+      aviso("Não foi possível verificar agora. Tente de novo.", "erro");
+    } finally {
+      carregando(botao, false, "Verificar de novo");
     }
   });
 
@@ -258,36 +320,35 @@ function iniciar() {
   auth = getAuth(app);
   db = getFirestore(app);
   configurarFormularios();
-  
-  const questoes = iniciarQuestoes({ db, estado, registrarAuditoria, aviso, aoSalvar: carregarResumo });
+
+  const base = { db, estado, registrarAuditoria, aviso, aoAlterar: carregarResumo };
+
+  const questoes = iniciarQuestoes({ ...base, aoSalvar: carregarResumo });
   banco = iniciarBanco({
-    db,
-    estado,
-    registrarAuditoria,
-    aviso,
-    aoAlterar: carregarResumo,
-    aoEditar: (questao) => {
-      questoes.editar(questao);
+    ...base,
+    aoEditar: async (questao) => {
+      await questoes.editar(questao);
+      location.hash = "#nova";
+    },
+    aoVersao: async (questao) => {
+      await questoes.versao(questao);
       location.hash = "#nova";
     }
   });
-  
-  iniciarImportacao({ db, estado, registrarAuditoria, aviso });
+  equipe = iniciarEquipe(base);
 
   onAuthStateChanged(auth, async (user) => {
-    if (estado.cadastrando) return;
+    if (estado.cadastrando) return; // o fluxo de cadastro conclui sozinho
     if (!user) {
       estado.usuario = null;
       estado.perfil = null;
       if (banco) banco.limpar();
+      if (equipe) equipe.limpar();
       mostrarLogin();
       return;
     }
     try {
-      estado.usuario = user;
-      estado.perfil = await carregarPerfil(user);
-      mostrarApp();
-      await registrarAuditoria("login");
+      await entrar(user);
     } catch (e) {
       console.error(e);
       aviso("Não foi possível carregar seu perfil. Confira as regras do Firestore.", "erro");
