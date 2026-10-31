@@ -1,10 +1,9 @@
 import {
-  addDoc, collection, serverTimestamp
+  addDoc, collection, doc, updateDoc, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { SEGMENTOS, BIMESTRES, TIPOS, DIFICULDADES, LETRAS } from "./curriculo.js";
 
 const $ = (seletor, raiz = document) => raiz.querySelector(seletor);
-const $$ = (seletor, raiz = document) => Array.from(raiz.querySelectorAll(seletor));
 
 function opcoes(lista, textoVazio) {
   const vazio = `<option value="">${textoVazio}</option>`;
@@ -42,8 +41,16 @@ function htmlFormulario() {
   }).join("");
 
   return `
-    <h1 class="text-2xl font-bold sm:text-3xl">Nova questão</h1>
+    <h1 id="q-titulo" class="text-2xl font-bold sm:text-3xl">Nova questão</h1>
     <p class="mt-1 text-[#33475B]">Toda questão nova fica aguardando validação até o Supervisor aprovar.</p>
+
+    <div id="q-banner" class="mt-4 hidden flex-col gap-2 rounded-xl border-2 border-marca bg-[#FFF6DB] p-4 sm:flex-row sm:items-center sm:justify-between" role="status">
+      <p class="font-bold">Você está editando uma questão. Ao salvar, ela volta para validação.</p>
+      <button type="button" id="q-cancelar-edicao"
+              class="rounded-[10px] border-2 border-[#9FB0BE] bg-white px-4 py-2 font-bold text-[#33475B]">
+        Cancelar edição
+      </button>
+    </div>
 
     <form id="form-questao" class="mt-6 space-y-6" novalidate>
 
@@ -138,8 +145,7 @@ function htmlFormulario() {
 
 export function iniciarQuestoes(ctx) {
   const area = document.getElementById("area-nova");
-  if (!area || area.dataset.pronto) return;
-  area.dataset.pronto = "1";
+  if (!area) return { editar() {} };
   area.innerHTML = htmlFormulario();
 
   const form = $("#form-questao", area);
@@ -151,6 +157,7 @@ export function iniciarQuestoes(ctx) {
   const botaoSalvar = $("#q-salvar", area);
   const contador = $("#q-contador", area);
   let salvasNaSessao = 0;
+  let editando = null; // { id } quando estamos editando uma questão existente
 
   function mostrarErro(texto, campo) {
     erro.textContent = texto || "";
@@ -183,6 +190,20 @@ export function iniciarQuestoes(ctx) {
     const ehMultipla = selTipo.value === "multipla_escolha";
     $("#bloco-mc", area).classList.toggle("hidden", !ehMultipla);
     $("#bloco-disc", area).classList.toggle("hidden", ehMultipla);
+  }
+
+  function atualizarModo() {
+    const emEdicao = Boolean(editando);
+    $("#q-titulo", area).textContent = emEdicao ? "Editar questão" : "Nova questão";
+    const banner = $("#q-banner", area);
+    banner.classList.toggle("hidden", !emEdicao);
+    banner.classList.toggle("flex", emEdicao);
+    botaoSalvar.textContent = emEdicao ? "Salvar alterações" : "Salvar questão";
+  }
+
+  function sairDaEdicao() {
+    editando = null;
+    atualizarModo();
   }
 
   function atualizarContador() {
@@ -229,9 +250,6 @@ export function iniciarQuestoes(ctx) {
           return { erro: `Preencha a alternativa ${letra}.`, campo: $(`#alt-${letra}`, area) };
         }
       }
-      if (alternativas.some((alt) => alt.letra === "E") === false && $("#alt-E", area).value.trim() !== "") {
-        return { erro: "Confira a alternativa E.", campo: $("#alt-E", area) };
-      }
 
       const marcada = $('input[name="gabarito-mc"]:checked', area);
       if (!marcada) return { erro: "Marque qual alternativa é a correta.", campo: $("#gab-A", area) };
@@ -258,14 +276,57 @@ export function iniciarQuestoes(ctx) {
     $("#q-enunciado", area).focus();
   }
 
-  selSegmento.addEventListener("change", sincronizarSegmento);
-  selTipo.addEventListener("change", sincronizarTipo);
-
-  $("#q-limpar", area).addEventListener("click", () => {
+  function limparTudo() {
     form.reset();
     sincronizarSegmento();
     sincronizarTipo();
     mostrarErro("");
+  }
+
+  // Preenche o formulário com uma questão existente (usado pelo Banco de questões).
+  function editar(questao) {
+    limparTudo();
+    editando = { id: questao.id };
+
+    selSegmento.value = questao.segmento;
+    sincronizarSegmento();
+    selAno.value = questao.ano;
+    selDisciplina.value = questao.disciplina;
+    $("#q-bimestre", area).value = String(questao.bimestre);
+    $("#q-assunto", area).value = questao.assunto || "";
+    $("#q-habilidade", area).value = questao.habilidade || "";
+    selTipo.value = questao.tipo;
+    $("#q-dificuldade", area).value = questao.dificuldade;
+    $("#q-enunciado", area).value = questao.enunciado || "";
+    $("#q-justificativa", area).value = questao.justificativa || "";
+    sincronizarTipo();
+
+    if (questao.tipo === "multipla_escolha") {
+      (questao.alternativas || []).forEach((alt) => {
+        const campo = $(`#alt-${alt.letra}`, area);
+        if (campo) campo.value = alt.texto;
+      });
+      const radio = $(`#gab-${questao.gabarito}`, area);
+      if (radio) radio.checked = true;
+    } else {
+      $("#q-gabarito-disc", area).value = questao.gabarito || "";
+    }
+
+    atualizarModo();
+  }
+
+  selSegmento.addEventListener("change", sincronizarSegmento);
+  selTipo.addEventListener("change", sincronizarTipo);
+
+  $("#q-limpar", area).addEventListener("click", () => {
+    limparTudo();
+    sairDaEdicao();
+  });
+
+  $("#q-cancelar-edicao", area).addEventListener("click", () => {
+    limparTudo();
+    sairDaEdicao();
+    location.hash = "#banco";
   });
 
   form.addEventListener("submit", async (ev) => {
@@ -285,23 +346,55 @@ export function iniciarQuestoes(ctx) {
     }
 
     const d = resultado.dados;
+    const campos = {
+      segmento: d.segmento,
+      ano: d.ano,
+      disciplina: d.disciplina,
+      bimestre: d.bimestre,
+      assunto: d.assunto,
+      habilidade: d.habilidade,
+      tipo: d.tipo,
+      dificuldade: d.dificuldade,
+      enunciado: d.enunciado,
+      alternativas: d.alternativas,
+      gabarito: d.gabarito,
+      justificativa: d.justificativa
+    };
+
     botaoSalvar.disabled = true;
     botaoSalvar.textContent = "Salvando…";
 
     try {
+      if (editando) {
+        // Qualquer edição volta a questão para validação.
+        await updateDoc(doc(ctx.db, "questoes", editando.id), {
+          ...campos,
+          ultimaModificacaoPor: estado.perfil.nome,
+          ultimaModificacaoEm: serverTimestamp(),
+          statusValidacao: "pendente",
+          validadoPor: null,
+          validadoPorUid: null,
+          validadoEm: null,
+          motivoRejeicao: null
+        });
+
+        await ctx.registrarAuditoria("questao_editada", {
+          questaoId: editando.id,
+          disciplina: d.disciplina,
+          ano: d.ano,
+          assunto: d.assunto
+        });
+
+        sairDaEdicao();
+        limparTudo();
+        ctx.aviso("Alterações salvas. A questão voltou para validação.");
+        if (typeof ctx.aoSalvar === "function") ctx.aoSalvar();
+        location.hash = "#banco";
+        return;
+      }
+
       const ref = await addDoc(collection(ctx.db, "questoes"), {
-        segmento: d.segmento,
-        ano: d.ano,
-        disciplina: d.disciplina,
-        bimestre: d.bimestre,
-        assunto: d.assunto,
-        habilidade: d.habilidade,
-        tipo: d.tipo,
-        dificuldade: d.dificuldade,
-        enunciado: d.enunciado,
-        alternativas: d.alternativas,
-        gabarito: d.gabarito,
-        justificativa: d.justificativa,
+        ...campos,
         // Metadados de auditoria
         criadoPorUid: estado.usuario.uid,
         criadoPor: estado.perfil.nome,
@@ -334,10 +427,13 @@ export function iniciarQuestoes(ctx) {
         : "Não foi possível salvar. Verifique sua conexão e tente de novo.");
     } finally {
       botaoSalvar.disabled = false;
-      botaoSalvar.textContent = "Salvar questão";
+      atualizarModo();
     }
   });
 
   sincronizarSegmento();
   sincronizarTipo();
+  atualizarModo();
+
+  return { editar };
 }
