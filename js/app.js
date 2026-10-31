@@ -9,6 +9,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { firebaseConfig, escola, configurado } from "./firebase-config.js";
 import { iniciarQuestoes } from "./questoes.js";
+import { iniciarBanco } from "./banco.js";
 
 // ---------- Utilidades ----------
 const $ = (seletor, raiz = document) => raiz.querySelector(seletor);
@@ -55,6 +56,7 @@ const ROTULO_CARGO = { professor: "Professor(a)", supervisor: "Coordenador(a) / 
 const estado = { usuario: null, perfil: null, cadastrando: false };
 let auth = null;
 let db = null;
+let banco = null;
 
 // ---------- Auditoria ----------
 // Usada agora para login e criação de conta. Nos próximos passos registra
@@ -96,6 +98,7 @@ function mostrarApp() {
 
   navegar();
   carregarResumo();
+  if (banco && location.hash === "#banco") banco.carregar();
 }
 
 const VIEWS = ["inicio", "banco", "nova", "provas", "acessibilidade", "auditoria"];
@@ -257,13 +260,25 @@ function iniciar() {
   auth = getAuth(app);
   db = getFirestore(app);
   configurarFormularios();
-  iniciarQuestoes({ db, estado, registrarAuditoria, aviso, aoSalvar: carregarResumo });
+  const questoes = iniciarQuestoes({ db, estado, registrarAuditoria, aviso, aoSalvar: carregarResumo });
+  banco = iniciarBanco({
+    db,
+    estado,
+    registrarAuditoria,
+    aviso,
+    aoAlterar: carregarResumo,
+    aoEditar: (questao) => {
+      questoes.editar(questao);
+      location.hash = "#nova";
+    }
+  });
 
   onAuthStateChanged(auth, async (user) => {
     if (estado.cadastrando) return; // o fluxo de cadastro conclui sozinho
     if (!user) {
       estado.usuario = null;
       estado.perfil = null;
+      if (banco) banco.limpar();
       mostrarLogin();
       return;
     }
