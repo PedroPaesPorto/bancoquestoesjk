@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Banco de Questões Colaborativo e Inclusivo</title>
+  <meta name="theme-color" content="#0F6B6B">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['"Atkinson Hyperlegible"', 'Verdana', 'system-ui', 'sans-serif'] },
+          colors: {
+            tinta: '#12263A',
+            petroleo: { DEFAULT: '#0F6B6B', escuro: '#0A4F4F', claro: '#E3F1F0' },
+            giz: '#F3F6F8',
+            marca: '#F2C14E',
+            alerta: '#B84A32'
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    html, body { height: 100%; }
+    body { background: #F3F6F8; color: #12263A; }
+    :focus-visible { outline: 3px solid #F2C14E; outline-offset: 2px; }
+
+    .campo { width: 100%; border: 1.5px solid #B9C4CE; background: #fff; border-radius: 10px; padding: 0.7rem 0.85rem; font-size: 1rem; color: #12263A; }
+    .campo:focus { border-color: #0F6B6B; outline: 3px solid rgba(15,107,107,.25); outline-offset: 0; }
+    .rotulo { display: block; font-weight: 700; font-size: 0.95rem; margin-bottom: 0.3rem; }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; border-radius: 10px; padding: .75rem 1.1rem; font-weight: 700; background: #0F6B6B; color: #fff; transition: background .15s; width: 100%; }
+    .btn:hover { background: #0A4F4F; }
+    .btn:disabled { background: #8AA7A7; cursor: not-allowed; }
+
+    .aba { flex: 1; padding: .7rem 0; font-weight: 700; border-bottom: 3px solid transparent; color: #4B5C6B; }
+    .aba-ativa { color: #0F6B6B; border-bottom-color: #0F6B6B; }
+
+    .nav-item { display: flex; align-items: center; gap: .75rem; padding: .65rem .85rem; border-radius: 10px; font-weight: 700; color: #33475B; }
+    .nav-item:hover { background: #E3F1F0; }
+    .nav-ativo { background: #0F6B6B; color: #fff; }
+    .nav-ativo:hover { background: #0F6B6B; }
+
+    .nav-baixo { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1; padding: .45rem 0 .5rem; font-size: .72rem; font-weight: 700; color: #4B5C6B; }
+    .nav-baixo.nav-ativo { background: transparent; color: #0F6B6B; box-shadow: inset 0 3px 0 #0F6B6B; border-radius: 0; }
+
+    .ico { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+
+    .toast { position: fixed; left: 50%; bottom: 5.5rem; transform: translate(-50%, 20px); opacity: 0; pointer-events: none; padding: .75rem 1.1rem; border-radius: 10px; font-weight: 700; max-width: 90vw; transition: opacity .2s, transform .2s; z-index: 50; }
+    .toast-visivel { opacity: 1; transform: translate(-50%, 0); }
+    .toast-ok { background: #12263A; color: #fff; }
+    .toast-erro { background: #B84A32; color: #fff; }
+
+    .linhas-caderno { background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 31px, rgba(255,255,255,.12) 31px, rgba(255,255,255,.12) 32px); }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; }
+    }
+  </style>
+</head>
+<body class="font-sans antialiased">
+
+  <!-- Ícones reutilizáveis -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-inicio" viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></symbol>
+    <symbol id="i-banco" viewBox="0 0 24 24"><path d="M4 4h12a4 4 0 0 1 4 4v12H8a4 4 0 0 1-4-4z"/><path d="M8 9h8M8 13h5"/></symbol>
+    <symbol id="i-nova" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></symbol>
+    <symbol id="i-provas" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 13h6M9 17h6"/></symbol>
+    <symbol id="i-ia" viewBox="0 0 24 24"><path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/></symbol>
+    <symbol id="i-auditoria" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+    <symbol id="i-sair" viewBox="0 0 24 24"><path d="M9 4H5v16h4M16 8l4 4-4 4M20 12H9"/></symbol>
+  </svg>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <!-- ====================== TELA DE LOGIN ====================== -->
+  <main id="tela-login" class="min-h-full lg:grid lg:grid-cols-2">
+
+    <section class="flex items-center justify-center px-5 py-10 lg:py-0">
+      <div class="w-full max-w-md">
+        <h1 class="text-2xl sm:text-3xl font-bold leading-tight">Banco de Questões Colaborativo e Inclusivo</h1>
+        <p class="mt-2 text-[#33475B]">Monte provas com os colegas e adapte cada questão para quem precisa.</p>
+
+        <div id="aviso-config" class="hidden mt-5 rounded-xl border-2 border-marca bg-[#FFF6DB] p-4 text-sm">
+          <strong>Falta configurar o Firebase.</strong>
+          Abra <code>js/firebase-config.js</code> e cole os dados do seu projeto. Depois recarregue esta página.
+        </div>
+
+        <div class="mt-7 flex border-b border-[#CBD5DD]" role="tablist">
+          <button type="button" role="tab" aria-selected="true" data-aba="entrar" class="aba aba-ativa">Entrar</button>
+          <button type="button" role="tab" aria-selected="false" data-aba="cadastrar" class="aba">Criar conta</button>
+        </div>
+
+        <form id="form-entrar" class="mt-6 space-y-4" novalidate>
+          <div>
+            <label class="rotulo" for="entrar-email">E-mail</label>
+            <input id="entrar-email" type="email" autocomplete="email" required class="campo" placeholder="nome@escola.com">
+          </div>
+          <div>
+            <label class="rotulo" for="entrar-senha">Senha</label>
+            <input id="entrar-senha" type="password" autocomplete="current-password" required class="campo">
+          </div>
+          <p data-erro class="hidden rounded-lg bg-[#FBE9E4] p-3 text-sm font-bold text-alerta" role="alert"></p>
+          <button type="submit" class="btn">Entrar</button>
+          <button type="button" id="link-esqueci" class="w-full text-center text-sm font-bold text-petroleo underline underline-offset-4">Esqueci minha senha</button>
+        </form>
+
+        <form id="form-cadastrar" class="mt-6 hidden space-y-4" novalidate>
+          <div>
+            <label class="rotulo" for="cad-nome">Nome completo</label>
+            <input id="cad-nome" type="text" autocomplete="name" required class="campo">
+          </div>
+          <div>
+            <label class="rotulo" for="cad-email">E-mail</label>
+            <input id="cad-email" type="email" autocomplete="email" required class="campo" placeholder="nome@escola.com">
+          </div>
+          <div>
+            <label class="rotulo" for="cad-senha">Senha</label>
+            <input id="cad-senha" type="password" autocomplete="new-password" minlength="6" required class="campo">
+            <p class="mt-1 text-sm text-[#4B5C6B]">Mínimo de 6 caracteres.</p>
+          </div>
+          <p data-erro class="hidden rounded-lg bg-[#FBE9E4] p-3 text-sm font-bold text-alerta" role="alert"></p>
+          <button type="submit" class="btn">Criar conta</button>
+          <p class="text-sm text-[#4B5C6B]">Toda conta nova começa como Professor(a). A coordenação libera o cargo de Supervisor(a).</p>
+        </form>
+      </div>
+    </section>
+
+    <!-- Painel de demonstração: o mesmo enunciado antes e depois da adaptação -->
+    <aside class="bg-petroleo text-white linhas-caderno px-5 py-10 lg:flex lg:flex-col lg:justify-center lg:px-14" aria-label="Exemplo de adaptação de questão">
+      <h2 class="text-xl font-bold lg:text-2xl">A mesma questão, em duas versões</h2>
+      <p class="mt-1 text-white/80">A IA ajuda a escrever a versão que o aluno consegue entender.</p>
+
+      <div class="mt-6 space-y-4 max-w-lg">
+        <article class="rounded-xl bg-white p-4 text-tinta">
+          <h3 class="text-sm font-bold text-[#4B5C6B]">Versão original</h3>
+          <p class="mt-2">Nem só de pão vive o homem: explique por que a luz do Sol é o “combustível” das plantas.</p>
+        </article>
+
+        <article class="rounded-xl border-2 border-marca bg-white p-4 text-tinta">
+          <h3 class="text-sm font-bold text-petroleo">Versão adaptada (TEA)</h3>
+          <ol class="mt-2 space-y-1 text-lg leading-loose">
+            <li>O Sol dá luz.</li>
+            <li>A planta usa a luz para fazer seu alimento.</li>
+            <li>Como se chama isso?</li>
+          </ol>
+          <ul class="mt-2 space-y-1 text-lg leading-loose">
+            <li>A) Fotossíntese</li>
+            <li>B) Respiração</li>
+          </ul>
+        </article>
+      </div>
+    </aside>
+  </main>
+
+  <!-- ====================== APLICATIVO ====================== -->
+  <div id="tela-app" class="hidden min-h-full">
+
+    <!-- Barra lateral (computador) -->
+    <aside class="hidden lg:flex fixed inset-y-0 left-0 w-64 flex-col border-r border-[#D5DDE4] bg-white p-4">
+      <div class="px-2 pb-4 border-b border-[#E3E9EE]">
+        <p class="font-bold leading-tight">Banco de Questões</p>
+        <p class="mt-1 text-sm text-[#4B5C6B]" data-escola></p>
+      </div>
+
+      <nav class="mt-4 flex flex-1 flex-col gap-1" aria-label="Menu principal">
+        <a href="#inicio" data-nav="inicio" class="nav-item"><svg class="ico" aria-hidden="true"><use href="#i-inicio"/></svg>Início</a>
+        <a href="#banco" data-nav="banco" class="nav-item"><svg class="ico" aria-hidden="true"><use href="#i-banco"/></svg>Banco de questões</a>
+        <a href="#nova" data-nav="nova" class="nav-item"><svg class="ico" aria-hidden="true"><use href="#i-nova"/></svg>Nova questão</a>
+        <a href="#provas" data-nav="provas" class="nav-item"><svg class="ico" aria-hidden="true"><use href="#i-provas"/></svg>Gerar prova</a>
+        <a href="#acessibilidade" data-nav="acessibilidade" class="nav-item"><svg class="ico" aria-hidden="true"><use href="#i-ia"/></svg>Adaptar com IA</a>
+        <a href="#auditoria" data-nav="auditoria" class="nav-item so-supervisor hidden"><svg class="ico" aria-hidden="true"><use href="#i-auditoria"/></svg>Auditoria</a>
+      </nav>
+
+      <div class="border-t border-[#E3E9EE] pt-3">
+        <div class="flex items-center gap-3 px-2">
+          <span class="flex h-10 w-10 items-center justify-center rounded-full bg-marca font-bold" data-inicial-usuario aria-hidden="true"></span>
+          <div class="min-w-0">
+            <p class="truncate font-bold" data-nome-usuario></p>
+            <p class="truncate text-sm text-[#4B5C6B]" data-cargo-usuario></p>
+          </div>
+        </div>
+        <button type="button" data-sair class="nav-item mt-2 w-full"><svg class="ico" aria-hidden="true"><use href="#i-sair"/></svg>Sair</button>
+      </div>
+    </aside>
+
+    <!-- Barra superior (celular) -->
+    <header class="lg:hidden sticky top-0 z-20 flex items-center justify-between border-b border-[#D5DDE4] bg-white px-4 py-3">
+      <div class="min-w-0">
+        <p class="truncate font-bold leading-tight" data-nome-usuario></p>
+        <p class="truncate text-xs text-[#4B5C6B]" data-cargo-usuario></p>
+      </div>
+      <button type="button" data-sair class="flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-bold text-petroleo">
+        <svg class="ico" aria-hidden="true"><use href="#i-sair"/></svg>Sair
+      </button>
+    </header>
+
+    <!-- Conteúdo -->
+    <main class="px-4 pb-28 pt-6 sm:px-8 lg:ml-64 lg:px-10 lg:pb-10">
+      <div class="mx-auto max-w-4xl">
+
+        <!-- Início -->
+        <section data-view="inicio">
+          <h1 class="text-2xl font-bold sm:text-3xl">Olá, <span data-nome-usuario></span></h1>
+          <p class="mt-1 text-[#33475B]">Aqui está o resumo do banco de questões.</p>
+
+          <dl class="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div class="rounded-xl border border-[#D5DDE4] bg-white p-4">
+              <dt class="text-sm font-bold text-[#4B5C6B]">Questões no banco</dt>
+              <dd id="res-total" class="mt-1 text-3xl font-bold">0</dd>
+            </div>
+            <div class="rounded-xl border border-[#D5DDE4] bg-white p-4">
+              <dt class="text-sm font-bold text-[#4B5C6B]">Aguardando validação</dt>
+              <dd id="res-pendentes" class="mt-1 text-3xl font-bold">0</dd>
+            </div>
+            <div class="rounded-xl border border-[#D5DDE4] bg-white p-4">
+              <dt class="text-sm font-bold text-[#4B5C6B]">Criadas por você</dt>
+              <dd id="res-minhas" class="mt-1 text-3xl font-bold">0</dd>
+            </div>
+          </dl>
+
+          <h2 class="mt-10 text-lg font-bold">O que vem a seguir no projeto</h2>
+          <ol class="mt-3 space-y-2">
+            <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 1 (pronto):</strong> login, cargos e estrutura do aplicativo.</li>
+            <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 2:</strong> cadastro de questões com taxonomia curricular.</li>
+            <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 3:</strong> banco com filtros e validação pelo Supervisor.</li>
+            <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 4:</strong> geração de provas para impressão e PDF.</li>
+            <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 5:</strong> adaptação com IA (TEA e não leitores).</li>
+            <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 6:</strong> painel de auditoria.</li>
+          </ol>
+        </section>
+
+        <!-- Banco -->
+        <section data-view="banco" class="hidden">
+          <h1 class="text-2xl font-bold">Banco de questões</h1>
+          <div class="mt-5 rounded-xl border border-dashed border-[#9FB0BE] bg-white p-6">
+            <p class="font-bold">Nenhuma questão cadastrada ainda.</p>
+            <p class="mt-1 text-[#33475B]">Cadastre a primeira em “Nova questão”. A lista com filtros chega no Passo 3.</p>
+            <a href="#nova" class="btn mt-4 !w-auto">Cadastrar questão</a>
+          </div>
+        </section>
+
+        <!-- Nova questão -->
+        <section data-view="nova" class="hidden">
+          <h1 class="text-2xl font-bold">Nova questão</h1>
+          <div class="mt-5 rounded-xl border border-dashed border-[#9FB0BE] bg-white p-6">
+            <p class="font-bold">O formulário de cadastro entra no Passo 2.</p>
+            <p class="mt-1 text-[#33475B]">Segmento, disciplina, ano, bimestre, habilidade BNCC, tipo, dificuldade, gabarito e justificativa.</p>
+          </div>
+        </section>
+
+        <!-- Gerar prova -->
+        <section data-view="provas" class="hidden">
+          <h1 class="text-2xl font-bold">Gerar prova</h1>
+          <div class="mt-5 rounded-xl border border-dashed border-[#9FB0BE] bg-white p-6">
+            <p class="font-bold">A montagem de provas entra no Passo 4.</p>
+            <p class="mt-1 text-[#33475B]">Cabeçalho da escola, filtros por assunto e dificuldade, e saída pronta para imprimir ou salvar em PDF.</p>
+          </div>
+        </section>
+
+        <!-- Acessibilidade -->
+        <section data-view="acessibilidade" class="hidden">
+          <h1 class="text-2xl font-bold">Adaptar com IA</h1>
+          <div class="mt-5 rounded-xl border border-dashed border-[#9FB0BE] bg-white p-6">
+            <p class="font-bold">O motor de adaptação entra no Passo 5.</p>
+            <p class="mt-1 text-[#33475B]">Enunciados diretos para alunos com TEA, vocabulário simples para não leitores e formatação com espaçamento duplo e fontes legíveis.</p>
+          </div>
+        </section>
+
+        <!-- Auditoria (Supervisor) -->
+        <section data-view="auditoria" class="hidden so-supervisor">
+          <h1 class="text-2xl font-bold">Auditoria</h1>
+          <div class="mt-5 rounded-xl border border-dashed border-[#9FB0BE] bg-white p-6">
+            <p class="font-bold">O painel de auditoria entra no Passo 6.</p>
+            <p class="mt-1 text-[#33475B]">Os registros de login e criação de conta já estão sendo gravados.</p>
+          </div>
+        </section>
+
+      </div>
+    </main>
+
+    <!-- Menu inferior (celular) -->
+    <nav class="lg:hidden fixed inset-x-0 bottom-0 z-30 flex border-t border-[#D5DDE4] bg-white" aria-label="Menu principal">
+      <a href="#inicio" data-nav="inicio" class="nav-baixo"><svg class="ico" aria-hidden="true"><use href="#i-inicio"/></svg>Início</a>
+      <a href="#banco" data-nav="banco" class="nav-baixo"><svg class="ico" aria-hidden="true"><use href="#i-banco"/></svg>Banco</a>
+      <a href="#nova" data-nav="nova" class="nav-baixo"><svg class="ico" aria-hidden="true"><use href="#i-nova"/></svg>Nova</a>
+      <a href="#provas" data-nav="provas" class="nav-baixo"><svg class="ico" aria-hidden="true"><use href="#i-provas"/></svg>Provas</a>
+      <a href="#acessibilidade" data-nav="acessibilidade" class="nav-baixo"><svg class="ico" aria-hidden="true"><use href="#i-ia"/></svg>IA</a>
+      <a href="#auditoria" data-nav="auditoria" class="nav-baixo so-supervisor hidden"><svg class="ico" aria-hidden="true"><use href="#i-auditoria"/></svg>Auditoria</a>
+    </nav>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
