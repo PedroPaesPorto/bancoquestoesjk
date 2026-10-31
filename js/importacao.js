@@ -1,5 +1,5 @@
-import { addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-import { GoogleGenerativeAI } from "https://esm.run/@google/genai";
+import { addDoc, collection, serverTimestamp } from "https://firebase.google.com/docs/web/setup"; // ou mantenha o seu import do firebase-firestore
+import { GoogleGenAI } from "https://esm.run/@google/genai";
 
 const $ = (seletor, raiz = document) => raiz.querySelector(seletor);
 
@@ -13,7 +13,7 @@ function htmlImportacao() {
         <div>
           <label class="rotulo" for="imp-chave-gemini">Chave de API do Gemini (Google AI Studio)</label>
           <input id="imp-chave-gemini" type="password" class="campo" placeholder="Cole sua API Key do Gemini aqui" autocomplete="off">
-          <p class="mt-1 text-xs text-[#4B5C6B]">A chave fica salva apenas no seu navegador para chamadas gratuitas da API.</p>
+          <p class="mt-1 text-xs text-[#4B5C6B]">A chave fica salva apenas no seu navegador para chamadas da API.</p>
         </div>
 
         <div>
@@ -47,19 +47,11 @@ function htmlImportacao() {
   `;
 }
 
-// Converte arquivo para o formato que o SDK aceita (objeto Part com inlineData)
-async function arquivoParaGenerativePart(file) {
+// Converte arquivo para Base64 para envio multimodal
+function arquivoParaBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => {
-      const base64Data = reader.result.split(',')[1];
-      resolve({
-        inlineData: {
-          data: base64Data,
-          mimeType: file.type
-        },
-      });
-    };
+    reader.onload = () => resolve(reader.result.split(',')[1]);
     reader.onerror = (error) => reject(error);
     reader.readAsDataURL(file);
   });
@@ -104,7 +96,7 @@ export function iniciarImportacao(ctx) {
     btnProcessar.textContent = "Processando com a IA...";
 
     try {
-      // Inicializa o SDK oficial do Google Gen AI
+      // Inicializa o cliente oficial conforme a documentação atualizada
       const ai = new GoogleGenAI({ apiKey });
 
       const promptInstrucao = `
@@ -133,22 +125,29 @@ Responda ESTRITAMENTE em formato JSON válido, como uma lista de objetos:
 Não inclua marcadores de código como \`\`\`json. Responda apenas o JSON puro.
 `;
 
-      let contentsArray = [promptInstrucao];
+      let inputPayload;
 
       if (arquivo) {
-        const filePart = await arquivoParaGenerativePart(arquivo);
-        contentsArray.push(filePart);
+        const base64Data = await arquivoParaBase64(arquivo);
+        inputPayload = [
+          { type: "text", text: promptInstrucao },
+          {
+            type: "image", // ou use type adequado dependendo do mimetype se for documento/pdf
+            data: base64Data,
+            mime_type: arquivo.type
+          }
+        ];
       } else {
-        contentsArray.push(`Texto da prova:\n${textoManual}`);
+        inputPayload = `${promptInstrucao}\n\nTexto da prova:\n${textoManual}`;
       }
 
-      // Chamada oficial usando o modelo gemini-2.5-flash
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: contentsArray,
+      // Chamada oficial utilizando a nova interface de interações e o modelo padrão
+      const interaction = await ai.interactions.create({
+        model: "gemini-3.8-flash",
+        input: inputPayload,
       });
 
-      let respostaTexto = response.text || "[]";
+      let respostaTexto = interaction.output_text || "[]";
       respostaTexto = respostaTexto.replace(/```json/g, "").replace(/```/g, "").trim();
 
       questoesExtraidas = JSON.parse(respostaTexto);
@@ -181,7 +180,7 @@ Não inclua marcadores de código como \`\`\`json. Responda apenas o JSON puro.
       li.className = "rounded-xl border border-[#D5DDE4] bg-white p-5 space-y-3";
       li.innerHTML = `
         <div class="flex items-center justify-between border-b border-[#E3E9EE] pb-2">
-          <span class="font-bold text-petroleo">Questão ${idx + 1} (${q.disciplina || 'Disciplina não informada'} - ${q.assunto || 'Sem assunto'})</span>
+          <span class="font-bold text-petroleo">Questão ${idx + 1} (${q.disciplina || 'Disciplina'} - ${q.assunto || 'Sem assunto'})</span>
           <span class="text-xs bg-[#E3F1F0] text-petroleo-escuro px-2.5 py-1 rounded-full font-bold">${q.tipo}</span>
         </div>
         <p class="whitespace-pre-wrap font-semibold">${q.enunciado}</p>
