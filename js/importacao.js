@@ -158,7 +158,6 @@ Não inclua marcadores de código como \`\`\`json. Responda apenas o JSON.
       if (!response.ok) throw new Error(data.error?.message || "Erro na comunicação com a API.");
 
       let respostaTexto = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
-      // Limpeza de possíveis formatações markdown trazidas pela IA
       respostaTexto = respostaTexto.replace(/```json/g, "").replace(/```/g, "").trim();
 
       questoesExtraidas = JSON.parse(respostaTexto);
@@ -168,7 +167,6 @@ Não inclua marcadores de código como \`\`\`json. Responda apenas o JSON.
       console.error(e);
       erro.textContent = `Erro ao processar prova: ${e.message}`;
       erro.classList.remove("hidden");
-    } font {
     } finally {
       btnProcessar.disabled = false;
       btnProcessar.textContent = "Extrair Questões com IA";
@@ -235,4 +233,13 @@ Não inclua marcadores de código como \`\`\`json. Responda apenas o JSON.
         });
       }
 
-      await ctx.registrarAuditoria("importacao_ia_sucesso", { quantidade: questo
+      await ctx.registrarAuditoria("importacao_ia_sucesso", { quantidade: questoesExtraidas.length });
+      ctx.aviso(`${questoesExtraidas.length} questão(ões) salvas no banco com sucesso!`);
+      $("#area-resultados-ia", area).classList.add("hidden");
+      location.hash = "#banco";
+    } catch (e) {
+      console.error(e);
+      ctx.aviso("Erro ao salvar algumas questões no banco.", "erro");
+    }
+  });
+}
