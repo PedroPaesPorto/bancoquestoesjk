@@ -1,4 +1,5 @@
 import { addDoc, collection, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { GoogleGenerativeAI } from "https://esm.run/@google/genai";
 
 const $ = (seletor, raiz = document) => raiz.querySelector(seletor);
 
@@ -46,11 +47,19 @@ function htmlImportacao() {
   `;
 }
 
-// Converte arquivo para Base64 para enviar ao Gemini
-function arquivoParaBase64(file) {
+// Converte arquivo para o formato que o SDK aceita (objeto Part com inlineData)
+async function arquivoParaGenerativePart(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onload = () => {
+      const base64Data = reader.result.split(',')[1];
+      resolve({
+        inlineData: {
+          data: base64Data,
+          mimeType: file.type
+        },
+      });
+    };
     reader.onerror = (error) => reject(error);
     reader.readAsDataURL(file);
   });
@@ -67,7 +76,6 @@ export function iniciarImportacao(ctx) {
   const campoChave = $("#imp-chave-gemini", area);
   let questoesExtraidas = [];
 
-  // Restaura a API Key do localStorage se existir
   campoChave.value = localStorage.getItem("gemini_api_key") || "";
 
   form.addEventListener("submit", async (ev) => {
@@ -96,7 +104,9 @@ export function iniciarImportacao(ctx) {
     btnProcessar.textContent = "Processando com a IA...";
 
     try {
-      let contents = [];
+      // Inicializa o SDK oficial do Google Gen AI
+      const ai = new GoogleGenerativeAI({ apiKey });
+
       const promptInstrucao = `
 Você é um assistente pedagógico especializado em organizar provas escolares.
 Analise a prova enviada e extraia todas as questões contidas nela.
@@ -120,44 +130,25 @@ Responda ESTRITAMENTE em formato JSON válido, como uma lista de objetos:
   { ... },
   { ... }
 ]
-Não inclua marcadores de código como \`\`\`json. Responda apenas o JSON.
+Não inclua marcadores de código como \`\`\`json. Responda apenas o JSON puro.
 `;
 
+      let contentsArray = [promptInstrucao];
+
       if (arquivo) {
-        const base64Data = await arquivoParaBase64(arquivo);
-        contents = [
-          {
-            parts: [
-              { text: promptInstrucao },
-              {
-                inline_data: {
-                  mime_type: arquivo.type,
-                  data: base64Data
-                }
-              }
-            ]
-          }
-        ];
+        const filePart = await arquivoParaGenerativePart(arquivo);
+        contentsArray.push(filePart);
       } else {
-        contents = [
-          {
-            parts: [
-              { text: `${promptInstrucao}\n\nTexto da prova:\n${textoManual}` }
-            ]
-          }
-        ];
+        contentsArray.push(`Texto da prova:\n${textoManual}`);
       }
 
-     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents })
+      // Chamada oficial usando o modelo gemini-2.5-flash
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: contentsArray,
       });
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error?.message || "Erro na comunicação com a API.");
-
-      let respostaTexto = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
+      let respostaTexto = response.text || "[]";
       respostaTexto = respostaTexto.replace(/```json/g, "").replace(/```/g, "").trim();
 
       questoesExtraidas = JSON.parse(respostaTexto);
@@ -165,7 +156,7 @@ Não inclua marcadores de código como \`\`\`json. Responda apenas o JSON.
       ctx.aviso(`${questoesExtraidas.length} questão(ões) extraída(s) com sucesso!`);
     } catch (e) {
       console.error(e);
-      erro.textContent = `Erro ao processar prova: ${e.message}`;
+      erro.textContent = `Erro ao processar prova: ${e.message || e}`;
       erro.classList.remove("hidden");
     } finally {
       btnProcessar.disabled = false;
