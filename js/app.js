@@ -8,6 +8,7 @@ import {
   serverTimestamp, getCountFromServer, query, where
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { firebaseConfig, escola, configurado } from "./firebase-config.js";
+import { iniciarQuestoes } from "./questoes.js";
 
 // ---------- Utilidades ----------
 const $ = (seletor, raiz = document) => raiz.querySelector(seletor);
@@ -256,6 +257,7 @@ function iniciar() {
   auth = getAuth(app);
   db = getFirestore(app);
   configurarFormularios();
+  iniciarQuestoes({ db, estado, registrarAuditoria, aviso, aoSalvar: carregarResumo });
 
   onAuthStateChanged(auth, async (user) => {
     if (estado.cadastrando) return; // o fluxo de cadastro conclui sozinho
