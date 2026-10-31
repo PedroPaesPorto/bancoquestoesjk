@@ -172,6 +172,7 @@
         <a href="#inicio" data-nav="inicio" class="nav-item"><svg class="ico" aria-hidden="true"><use href="#i-inicio"/></svg>Início</a>
         <a href="#banco" data-nav="banco" class="nav-item"><svg class="ico" aria-hidden="true"><use href="#i-banco"/></svg>Banco de questões</a>
         <a href="#nova" data-nav="nova" class="nav-item"><svg class="ico" aria-hidden="true"><use href="#i-nova"/></svg>Nova questão</a>
+        <a href="#importar" data-nav="importar" class="nav-item"><svg class="ico" aria-hidden="true"><use href="#i-ia"/></svg>Importar Prova (IA)</a>
         <a href="#provas" data-nav="provas" class="nav-item"><svg class="ico" aria-hidden="true"><use href="#i-provas"/></svg>Gerar prova</a>
         <a href="#acessibilidade" data-nav="acessibilidade" class="nav-item"><svg class="ico" aria-hidden="true"><use href="#i-ia"/></svg>Adaptar com IA</a>
         <a href="#auditoria" data-nav="auditoria" class="nav-item so-supervisor hidden"><svg class="ico" aria-hidden="true"><use href="#i-auditoria"/></svg>Auditoria</a>
@@ -229,9 +230,9 @@
             <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 1 (pronto):</strong> login, cargos e estrutura do aplicativo.</li>
             <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 2 (pronto):</strong> cadastro de questões com taxonomia curricular.</li>
             <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 3 (pronto):</strong> banco com filtros e validação pelo Supervisor.</li>
-            <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 4:</strong> geração de provas para impressão e PDF.</li>
-            <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 5:</strong> adaptação com IA (TEA e não leitores).</li>
-            <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 6:</strong> painel de auditoria.</li>
+            <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 4 (pronto):</strong> importação inteligente de provas por IA.</li>
+            <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 5:</strong> geração de provas para impressão e PDF.</li>
+            <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 6:</strong> adaptação com IA (TEA e não leitores).</li>
           </ol>
         </section>
 
@@ -241,11 +242,14 @@
         <!-- Nova questão -->
         <section data-view="nova" id="area-nova" class="hidden"></section>
 
+        <!-- Importar Prova (IA) -->
+        <section data-view="importar" id="area-importacao" class="hidden"></section>
+
         <!-- Gerar prova -->
         <section data-view="provas" class="hidden">
           <h1 class="text-2xl font-bold">Gerar prova</h1>
           <div class="mt-5 rounded-xl border border-dashed border-[#9FB0BE] bg-white p-6">
-            <p class="font-bold">A montagem de provas entra no Passo 4.</p>
+            <p class="font-bold">A montagem de provas entra no próximo passo.</p>
             <p class="mt-1 text-[#33475B]">Cabeçalho da escola, filtros por assunto e dificuldade, e saída pronta para imprimir ou salvar em PDF.</p>
           </div>
         </section>
@@ -254,7 +258,7 @@
         <section data-view="acessibilidade" class="hidden">
           <h1 class="text-2xl font-bold">Adaptar com IA</h1>
           <div class="mt-5 rounded-xl border border-dashed border-[#9FB0BE] bg-white p-6">
-            <p class="font-bold">O motor de adaptação entra no Passo 5.</p>
+            <p class="font-bold">O motor de adaptação inclusiva.</p>
             <p class="mt-1 text-[#33475B]">Enunciados diretos para alunos com TEA, vocabulário simples para não leitores e formatação com espaçamento duplo e fontes legíveis.</p>
           </div>
         </section>
@@ -263,7 +267,7 @@
         <section data-view="auditoria" class="hidden so-supervisor">
           <h1 class="text-2xl font-bold">Auditoria</h1>
           <div class="mt-5 rounded-xl border border-dashed border-[#9FB0BE] bg-white p-6">
-            <p class="font-bold">O painel de auditoria entra no Passo 6.</p>
+            <p class="font-bold">O painel de auditoria do sistema.</p>
             <p class="mt-1 text-[#33475B]">Os registros de login e criação de conta já estão sendo gravados.</p>
           </div>
         </section>
@@ -276,8 +280,8 @@
       <a href="#inicio" data-nav="inicio" class="nav-baixo"><svg class="ico" aria-hidden="true"><use href="#i-inicio"/></svg>Início</a>
       <a href="#banco" data-nav="banco" class="nav-baixo"><svg class="ico" aria-hidden="true"><use href="#i-banco"/></svg>Banco</a>
       <a href="#nova" data-nav="nova" class="nav-baixo"><svg class="ico" aria-hidden="true"><use href="#i-nova"/></svg>Nova</a>
+      <a href="#importar" data-nav="importar" class="nav-baixo"><svg class="ico" aria-hidden="true"><use href="#i-ia"/></svg>IA</a>
       <a href="#provas" data-nav="provas" class="nav-baixo"><svg class="ico" aria-hidden="true"><use href="#i-provas"/></svg>Provas</a>
-      <a href="#acessibilidade" data-nav="acessibilidade" class="nav-baixo"><svg class="ico" aria-hidden="true"><use href="#i-ia"/></svg>IA</a>
       <a href="#auditoria" data-nav="auditoria" class="nav-baixo so-supervisor hidden"><svg class="ico" aria-hidden="true"><use href="#i-auditoria"/></svg>Auditoria</a>
     </nav>
   </div>
