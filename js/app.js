@@ -60,8 +60,6 @@ let db = null;
 let banco = null;
 
 // ---------- Auditoria ----------
-// Usada agora para login e criação de conta. Nos próximos passos registra
-// criação, edição, validação e exclusão de questões.
 export async function registrarAuditoria(acao, detalhes = {}) {
   if (!db || !estado.usuario || !estado.perfil) return;
   try {
@@ -145,7 +143,6 @@ async function carregarPerfil(user) {
   const snap = await getDoc(ref);
   if (snap.exists()) return snap.data();
 
-  // Conta existente sem perfil (ex.: criada pelo Console): cria como Professor.
   const perfil = {
     nome: user.displayName || user.email.split("@")[0],
     email: user.email,
@@ -249,7 +246,6 @@ function configurarFormularios() {
 // ---------- Inicialização ----------
 function iniciar() {
   configurarAbas();
-  iniciarImportacao({ db, estado, registrarAuditoria, aviso });
   window.addEventListener("hashchange", navegar);
 
   if (!configurado) {
@@ -262,6 +258,7 @@ function iniciar() {
   auth = getAuth(app);
   db = getFirestore(app);
   configurarFormularios();
+  
   const questoes = iniciarQuestoes({ db, estado, registrarAuditoria, aviso, aoSalvar: carregarResumo });
   banco = iniciarBanco({
     db,
@@ -274,9 +271,11 @@ function iniciar() {
       location.hash = "#nova";
     }
   });
+  
+  iniciarImportacao({ db, estado, registrarAuditoria, aviso });
 
   onAuthStateChanged(auth, async (user) => {
-    if (estado.cadastrando) return; // o fluxo de cadastro conclui sozinho
+    if (estado.cadastrando) return;
     if (!user) {
       estado.usuario = null;
       estado.perfil = null;
