@@ -228,7 +228,7 @@
           <ol class="mt-3 space-y-2">
             <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 1 (pronto):</strong> login, cargos e estrutura do aplicativo.</li>
             <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 2 (pronto):</strong> cadastro de questões com taxonomia curricular.</li>
-            <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 3:</strong> banco com filtros e validação pelo Supervisor.</li>
+            <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 3 (pronto):</strong> banco com filtros e validação pelo Supervisor.</li>
             <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 4:</strong> geração de provas para impressão e PDF.</li>
             <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 5:</strong> adaptação com IA (TEA e não leitores).</li>
             <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 6:</strong> painel de auditoria.</li>
@@ -236,14 +236,7 @@
         </section>
 
         <!-- Banco -->
-        <section data-view="banco" class="hidden">
-          <h1 class="text-2xl font-bold">Banco de questões</h1>
-          <div class="mt-5 rounded-xl border border-dashed border-[#9FB0BE] bg-white p-6">
-            <p class="font-bold">Nenhuma questão cadastrada ainda.</p>
-            <p class="mt-1 text-[#33475B]">Cadastre a primeira em “Nova questão”. A lista com filtros chega no Passo 3.</p>
-            <a href="#nova" class="btn mt-4 !w-auto">Cadastrar questão</a>
-          </div>
-        </section>
+        <section data-view="banco" id="area-banco" class="hidden"></section>
 
         <!-- Nova questão -->
         <section data-view="nova" id="area-nova" class="hidden"></section>
