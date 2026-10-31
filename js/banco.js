@@ -2,6 +2,10 @@ import {
   collection, getDocs, query, orderBy, limit, doc, updateDoc, deleteDoc, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { SEGMENTOS, BIMESTRES, TIPOS, DIFICULDADES } from "./curriculo.js";
+import { $, el, normalizar, formatarData, rotuloCargo } from "./util.js";
+import { perguntar } from "./dialogo.js";
+import { renderRico, desenharQuestao } from "./rico.js";
+import { obterImagem, obterApoio } from "./midia.js";
 
 const LIMITE_CARREGADO = 300;
 const POR_PAGINA = 20;
@@ -12,83 +16,8 @@ const STATUS = {
   rejeitada: { rotulo: "Devolvida", classes: "bg-[#FBE9E4] text-alerta border-alerta" }
 };
 
-const $ = (seletor, raiz = document) => raiz.querySelector(seletor);
+const paraImagem = (img) => ({ dataUrl: img.dataUrl, alt: img.alt });
 
-// Cria um elemento com texto seguro (nunca interpreta HTML vindo do banco).
-function el(tag, classes = "", texto = "") {
-  const e = document.createElement(tag);
-  if (classes) e.className = classes;
-  if (texto) e.textContent = texto;
-  return e;
-}
-
-function normalizar(texto) {
-  return String(texto || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-}
-
-function formatarData(ts) {
-  if (!ts || typeof ts.toDate !== "function") return "agora há pouco";
-  return ts.toDate().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
-}
-
-function rotuloCargo(cargo) {
-  return cargo === "supervisor" ? "Supervisor(a)" : "Professor(a)";
-}
-
-// ---------- Janela de confirmação ----------
-function perguntar({ titulo, texto, rotuloOk, pedirMotivo = false, perigo = false }) {
-  return new Promise((resolve) => {
-    const dlg = el("dialog", "w-[min(92vw,28rem)] rounded-xl p-0 text-tinta backdrop:bg-black/50");
-    const corpo = el("div", "p-5");
-    corpo.appendChild(el("h2", "text-lg font-bold", titulo));
-    corpo.appendChild(el("p", "mt-2 text-[#33475B]", texto));
-
-    let campo = null;
-    let aviso = null;
-    if (pedirMotivo) {
-      const rotulo = el("label", "rotulo mt-4", "Motivo da devolução");
-      campo = el("textarea", "campo");
-      campo.rows = 3;
-      campo.maxLength = 500;
-      campo.id = "motivo-devolucao";
-      rotulo.htmlFor = campo.id;
-      aviso = el("p", "mt-2 hidden text-sm font-bold text-alerta", "Explique o motivo com pelo menos 5 letras.");
-      aviso.setAttribute("role", "alert");
-      corpo.append(rotulo, campo, aviso);
-    }
-
-    const botoes = el("div", "mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end");
-    const cancelar = el("button", "rounded-[10px] border-2 border-[#9FB0BE] px-5 py-2.5 font-bold text-[#33475B]", "Cancelar");
-    cancelar.type = "button";
-    const confirmar = el("button", "rounded-[10px] px-5 py-2.5 font-bold text-white " + (perigo ? "bg-alerta" : "bg-petroleo"), rotuloOk);
-    confirmar.type = "button";
-    botoes.append(cancelar, confirmar);
-    corpo.appendChild(botoes);
-    dlg.appendChild(corpo);
-
-    let resultado = { ok: false, motivo: "" };
-
-    cancelar.addEventListener("click", () => dlg.close());
-    confirmar.addEventListener("click", () => {
-      if (campo && campo.value.trim().length < 5) {
-        aviso.classList.remove("hidden");
-        campo.focus();
-        return;
-      }
-      resultado = { ok: true, motivo: campo ? campo.value.trim() : "" };
-      dlg.close();
-    });
-    dlg.addEventListener("close", () => {
-      dlg.remove();
-      resolve(resultado);
-    });
-
-    document.body.appendChild(dlg);
-    dlg.showModal();
-  });
-}
-
-// ---------- Módulo ----------
 export function iniciarBanco(ctx) {
   const area = document.getElementById("area-banco");
   if (!area) return { carregar() {}, limpar() {} };
@@ -99,10 +28,9 @@ export function iniciarBanco(ctx) {
 
   const filtros = {
     busca: "", segmento: "", ano: "", disciplina: "", bimestre: "",
-    tipo: "", dificuldade: "", status: "", soMinhas: false
+    tipo: "", dificuldade: "", status: "", soMinhas: false, arquivadas: false
   };
 
-  // ----- Estrutura fixa da tela -----
   function opcoesHtml(itens, textoVazio) {
     return `<option value="">${textoVazio}</option>` +
       itens.map((i) => `<option value="${i.valor}">${i.rotulo}</option>`).join("");
@@ -165,6 +93,12 @@ export function iniciarBanco(ctx) {
             Só as minhas
           </label>
         </div>
+        <div class="flex items-end">
+          <label class="flex items-center gap-3 py-3 font-bold">
+            <input id="b-arquivadas" type="checkbox" class="h-5 w-5 accent-[#0F6B6B]">
+            Mostrar arquivadas
+          </label>
+        </div>
       </div>
       <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
         <p id="b-contagem" class="text-sm font-bold text-[#33475B]" aria-live="polite"></p>
@@ -191,11 +125,16 @@ export function iniciarBanco(ctx) {
     filtros.disciplina = "";
   }
 
+  // ----- Quem é o responsável -----
+  const responsavelUidDe = (q) => q.responsavelUid || q.criadoPorUid;
+  const responsavelNomeDe = (q) => q.responsavel || q.criadoPor;
+
   // ----- Filtragem -----
   function filtrar() {
     const busca = normalizar(filtros.busca);
     const meuUid = ctx.estado.usuario ? ctx.estado.usuario.uid : "";
     return lista.filter((q) => {
+      if (q.arquivada && !filtros.arquivadas) return false;
       if (filtros.segmento && q.segmento !== filtros.segmento) return false;
       if (filtros.ano && q.ano !== filtros.ano) return false;
       if (filtros.disciplina && q.disciplina !== filtros.disciplina) return false;
@@ -203,19 +142,20 @@ export function iniciarBanco(ctx) {
       if (filtros.tipo && q.tipo !== filtros.tipo) return false;
       if (filtros.dificuldade && q.dificuldade !== filtros.dificuldade) return false;
       if (filtros.status && q.statusValidacao !== filtros.status) return false;
-      if (filtros.soMinhas && q.criadoPorUid !== meuUid) return false;
+      if (filtros.soMinhas && responsavelUidDe(q) !== meuUid) return false;
       if (busca) {
-        const texto = normalizar([q.assunto, q.enunciado, q.habilidade, q.disciplina, q.criadoPor].join(" "));
+        const texto = normalizar([q.assunto, q.enunciado, q.habilidade, q.disciplina, q.criadoPor, responsavelNomeDe(q)].join(" "));
         if (!texto.includes(busca)) return false;
       }
       return true;
     });
   }
 
-  // ----- Cartão de questão -----
+  // ----- Detalhe da questão (carrega imagens e texto de apoio sob demanda) -----
   function linhaAuditoria(q) {
     const partes = [
       `Criada por ${q.criadoPor || "autor desconhecido"} (${rotuloCargo(q.cargo)}) em ${formatarData(q.criadoEm)}.`,
+      `Responsável atual: ${responsavelNomeDe(q) || "não definido"}.`,
       `Última alteração por ${q.ultimaModificacaoPor || "autor desconhecido"} em ${formatarData(q.ultimaModificacaoEm)}.`
     ];
     if (q.statusValidacao === "aprovada" && q.validadoPor) {
@@ -224,27 +164,76 @@ export function iniciarBanco(ctx) {
     if (q.statusValidacao === "rejeitada" && q.validadoPor) {
       partes.push(`Devolvida por ${q.validadoPor} em ${formatarData(q.validadoEm)}.`);
     }
+    if (q.derivadaDeId) partes.push("Esta questão é uma versão criada a partir de outra do banco.");
     return partes.join(" ");
   }
 
+  async function carregarDetalhe(q, conteudo) {
+    conteudo.replaceChildren(el("p", "text-sm text-[#4B5C6B]", "Carregando a questão completa…"));
+    try {
+      const resolver = async (ids) =>
+        (await Promise.all((ids || []).map((id) => obterImagem(ctx.db, id)))).filter(Boolean).map(paraImagem);
+
+      const apoioDoc = q.textoApoioId ? await obterApoio(ctx.db, q.textoApoioId) : null;
+      const dados = {
+        apoio: apoioDoc
+          ? { titulo: apoioDoc.titulo, fonte: apoioDoc.fonte, texto: apoioDoc.texto, imagens: await resolver(apoioDoc.imagens) }
+          : null,
+        enunciado: q.enunciado,
+        imagens: await resolver(q.enunciadoImagens),
+        tipo: q.tipo,
+        alternativas: await Promise.all((q.alternativas || []).map(async (alt) => ({
+          letra: alt.letra,
+          texto: alt.texto,
+          imagem: alt.imagemId ? ((await resolver([alt.imagemId]))[0] || null) : null
+        }))),
+        gabarito: q.gabarito,
+        justificativa: q.justificativa,
+        mostrarGabarito: true
+      };
+
+      const quadro = el("div");
+      desenharQuestao(quadro, dados);
+      conteudo.replaceChildren(quadro);
+
+      if (q.habilidade) {
+        const hab = el("p", "mt-3");
+        hab.appendChild(el("strong", "", "Habilidade: "));
+        hab.appendChild(document.createTextNode(q.habilidade));
+        conteudo.appendChild(hab);
+      }
+      conteudo.appendChild(el("p", "mt-3 border-t border-[#E3E9EE] pt-3 text-sm text-[#4B5C6B]", linhaAuditoria(q)));
+    } catch (e) {
+      console.error(e);
+      conteudo.replaceChildren(el("p", "text-sm font-bold text-alerta", "Não foi possível carregar a questão completa."));
+    }
+  }
+
+  // ----- Cartão -----
   function criarCartao(q) {
     const ehSupervisor = ctx.estado.perfil.cargo === "supervisor";
-    const ehDono = q.criadoPorUid === ctx.estado.usuario.uid;
+    const ehResponsavel = responsavelUidDe(q) === ctx.estado.usuario.uid;
     const situacao = STATUS[q.statusValidacao] || STATUS.pendente;
+    const podeMexer = ehSupervisor || (ehResponsavel && q.statusValidacao !== "aprovada");
 
-    const item = el("li", "rounded-xl border border-[#D5DDE4] bg-white p-4 sm:p-5");
+    const item = el("li", "rounded-xl border border-[#D5DDE4] bg-white p-4 sm:p-5" + (q.arquivada ? " opacity-80" : ""));
 
-    // Selos
     const selos = el("div", "flex flex-wrap gap-2");
     selos.appendChild(el("span", `rounded-full border px-3 py-1 text-sm font-bold ${situacao.classes}`, situacao.rotulo));
+    if (q.arquivada) selos.appendChild(el("span", "rounded-full border border-[#33475B] bg-[#E8EDF1] px-3 py-1 text-sm font-bold text-[#33475B]", "Arquivada"));
     selos.appendChild(el("span", "rounded-full border border-[#B9C4CE] px-3 py-1 text-sm font-bold text-[#33475B]", DIFICULDADES[q.dificuldade] || ""));
     selos.appendChild(el("span", "rounded-full border border-[#B9C4CE] px-3 py-1 text-sm font-bold text-[#33475B]", TIPOS[q.tipo] || ""));
     item.appendChild(selos);
 
-    // Título e resumo
     item.appendChild(el("h3", "mt-3 text-lg font-bold leading-snug", q.assunto || "Sem assunto"));
-    item.appendChild(el("p", "text-sm text-[#4B5C6B]", `${q.disciplina}, ${q.ano}, ${q.bimestre}º bimestre. Autor: ${q.criadoPor || "desconhecido"}`));
-    item.appendChild(el("p", "mt-2 line-clamp-3 whitespace-pre-wrap", q.enunciado || ""));
+
+    let autoria = `${q.disciplina}, ${q.ano}, ${q.bimestre}º bimestre. Autor: ${q.criadoPor || "desconhecido"}`;
+    if (responsavelUidDe(q) !== q.criadoPorUid) autoria += `. Responsável: ${responsavelNomeDe(q) || "não definido"}`;
+    item.appendChild(el("p", "text-sm text-[#4B5C6B]", autoria));
+
+    const previa = el("p", "mt-2 line-clamp-3 whitespace-pre-wrap");
+    renderRico(previa, q.enunciado || "");
+    item.appendChild(previa);
 
     if (q.statusValidacao === "rejeitada" && q.motivoRejeicao) {
       const motivo = el("p", "mt-3 rounded-lg bg-[#FBE9E4] p-3 text-sm");
@@ -253,46 +242,19 @@ export function iniciarBanco(ctx) {
       item.appendChild(motivo);
     }
 
-    // Detalhes
     const detalhes = el("details", "mt-3 rounded-lg border border-[#E3E9EE] p-3");
     detalhes.appendChild(el("summary", "cursor-pointer font-bold text-petroleo", "Ver questão completa"));
-
-    const conteudo = el("div", "mt-3 space-y-3");
-    conteudo.appendChild(el("p", "whitespace-pre-wrap", q.enunciado || ""));
-
-    if (q.tipo === "multipla_escolha") {
-      const ul = el("ul", "space-y-1");
-      (q.alternativas || []).forEach((alt) => {
-        const correta = alt.letra === q.gabarito;
-        const li = el("li", correta ? "rounded-lg bg-petroleo-claro p-2 font-bold" : "p-2", `${alt.letra}) ${alt.texto}`);
-        if (correta) li.appendChild(document.createTextNode(" (correta)"));
-        ul.appendChild(li);
-      });
-      conteudo.appendChild(ul);
-    } else {
-      const esperada = el("p", "rounded-lg bg-petroleo-claro p-3 whitespace-pre-wrap");
-      esperada.appendChild(el("strong", "", "Resposta esperada: "));
-      esperada.appendChild(document.createTextNode(q.gabarito || ""));
-      conteudo.appendChild(esperada);
-    }
-
-    const just = el("p", "whitespace-pre-wrap");
-    just.appendChild(el("strong", "", "Justificativa: "));
-    just.appendChild(document.createTextNode(q.justificativa || ""));
-    conteudo.appendChild(just);
-
-    if (q.habilidade) {
-      const hab = el("p");
-      hab.appendChild(el("strong", "", "Habilidade: "));
-      hab.appendChild(document.createTextNode(q.habilidade));
-      conteudo.appendChild(hab);
-    }
-
-    conteudo.appendChild(el("p", "border-t border-[#E3E9EE] pt-3 text-sm text-[#4B5C6B]", linhaAuditoria(q)));
+    const conteudo = el("div", "mt-3");
     detalhes.appendChild(conteudo);
+    let aberto = false;
+    detalhes.addEventListener("toggle", () => {
+      if (detalhes.open && !aberto) {
+        aberto = true;
+        carregarDetalhe(q, conteudo);
+      }
+    });
     item.appendChild(detalhes);
 
-    // Ações
     const acoes = el("div", "mt-4 flex flex-wrap gap-2");
     const botao = (texto, classes, aoClicar) => {
       const b = el("button", `rounded-[10px] px-4 py-2 font-bold ${classes}`, texto);
@@ -301,17 +263,23 @@ export function iniciarBanco(ctx) {
       acoes.appendChild(b);
     };
 
-    if (ehSupervisor && q.statusValidacao !== "aprovada") {
+    if (ehSupervisor && !q.arquivada && q.statusValidacao !== "aprovada") {
       botao("Aprovar", "bg-petroleo text-white hover:bg-petroleo-escuro", () => aprovar(q));
     }
-    if (ehSupervisor && q.statusValidacao !== "rejeitada") {
+    if (ehSupervisor && !q.arquivada && q.statusValidacao !== "rejeitada") {
       botao("Devolver", "border-2 border-alerta text-alerta hover:bg-[#FBE9E4]", () => devolver(q));
     }
-    if (ehDono || ehSupervisor) {
+    if (podeMexer) {
       botao("Editar", "border-2 border-[#9FB0BE] text-[#33475B] hover:bg-giz", () => ctx.aoEditar(q));
+    }
+    botao("Criar versão", "border-2 border-[#9FB0BE] text-[#33475B] hover:bg-giz", () => ctx.aoVersao(q));
+    if (ehSupervisor) {
+      botao(q.arquivada ? "Restaurar" : "Arquivar", "border-2 border-[#9FB0BE] text-[#33475B] hover:bg-giz", () => alternarArquivo(q));
+    }
+    if (podeMexer) {
       botao("Excluir", "border-2 border-[#9FB0BE] text-alerta hover:bg-[#FBE9E4]", () => excluir(q));
     }
-    if (acoes.children.length > 0) item.appendChild(acoes);
+    item.appendChild(acoes);
 
     return item;
   }
@@ -381,7 +349,7 @@ export function iniciarBanco(ctx) {
       console.error(e);
       carregou = false;
       mostrarMensagem(e && e.code === "permission-denied"
-        ? "O Firestore recusou a leitura. Confira se publicou as regras do arquivo firestore.rules."
+        ? "O Firestore recusou a leitura. Confira se publicou as regras do arquivo firestore.rules e se sua conta está ativa."
         : "Não foi possível carregar as questões. Verifique a conexão e toque em Atualizar lista.", "erro");
     }
   }
@@ -395,6 +363,11 @@ export function iniciarBanco(ctx) {
   }
 
   // ----- Ações -----
+  async function depoisDeAlterar() {
+    ctx.aoAlterar();
+    await carregar();
+  }
+
   async function aprovar(q) {
     const { perfil, usuario } = ctx.estado;
     try {
@@ -409,8 +382,7 @@ export function iniciarBanco(ctx) {
       });
       await ctx.registrarAuditoria("questao_aprovada", { questaoId: q.id, disciplina: q.disciplina, assunto: q.assunto });
       ctx.aviso("Questão aprovada e incluída no Banco Oficial.");
-      ctx.aoAlterar();
-      await carregar();
+      await depoisDeAlterar();
     } catch (e) {
       console.error(e);
       ctx.aviso("Não foi possível aprovar a questão.", "erro");
@@ -419,8 +391,8 @@ export function iniciarBanco(ctx) {
 
   async function devolver(q) {
     const resposta = await perguntar({
-      titulo: "Devolver questão ao autor",
-      texto: "A questão sai do Banco Oficial e o autor vê o motivo que você escrever.",
+      titulo: "Devolver questão ao responsável",
+      texto: "A questão sai do Banco Oficial e o responsável vê o motivo que você escrever.",
       rotuloOk: "Devolver questão",
       pedirMotivo: true,
       perigo: true
@@ -439,19 +411,47 @@ export function iniciarBanco(ctx) {
         ultimaModificacaoEm: serverTimestamp()
       });
       await ctx.registrarAuditoria("questao_devolvida", { questaoId: q.id, disciplina: q.disciplina, assunto: q.assunto, motivo: resposta.motivo });
-      ctx.aviso("Questão devolvida ao autor.");
-      ctx.aoAlterar();
-      await carregar();
+      ctx.aviso("Questão devolvida.");
+      await depoisDeAlterar();
     } catch (e) {
       console.error(e);
       ctx.aviso("Não foi possível devolver a questão.", "erro");
     }
   }
 
+  async function alternarArquivo(q) {
+    const arquivar = !q.arquivada;
+    const resposta = await perguntar({
+      titulo: arquivar ? "Arquivar questão" : "Restaurar questão",
+      texto: arquivar
+        ? "A questão sai das listas e das provas, mas continua guardada e pode ser restaurada."
+        : "A questão volta a aparecer nas listas e pode ser usada em provas.",
+      rotuloOk: arquivar ? "Arquivar" : "Restaurar"
+    });
+    if (!resposta.ok) return;
+
+    const { perfil } = ctx.estado;
+    try {
+      await updateDoc(doc(ctx.db, "questoes", q.id), {
+        arquivada: arquivar,
+        ultimaModificacaoPor: perfil.nome,
+        ultimaModificacaoEm: serverTimestamp()
+      });
+      await ctx.registrarAuditoria(arquivar ? "questao_arquivada" : "questao_restaurada", {
+        questaoId: q.id, disciplina: q.disciplina, assunto: q.assunto
+      });
+      ctx.aviso(arquivar ? "Questão arquivada." : "Questão restaurada.");
+      await depoisDeAlterar();
+    } catch (e) {
+      console.error(e);
+      ctx.aviso("Não foi possível concluir a ação.", "erro");
+    }
+  }
+
   async function excluir(q) {
     const resposta = await perguntar({
       titulo: "Excluir questão",
-      texto: `Excluir a questão sobre “${q.assunto}”? Essa ação não pode ser desfeita.`,
+      texto: `Excluir a questão sobre “${q.assunto}”? Essa ação não pode ser desfeita. Para tirar uma questão de uso sem perdê-la, peça ao Supervisor para arquivar.`,
       rotuloOk: "Excluir questão",
       perigo: true
     });
@@ -467,8 +467,7 @@ export function iniciarBanco(ctx) {
         autor: q.criadoPor || ""
       });
       ctx.aviso("Questão excluída.");
-      ctx.aoAlterar();
-      await carregar();
+      await depoisDeAlterar();
     } catch (e) {
       console.error(e);
       ctx.aviso("Não foi possível excluir a questão.", "erro");
@@ -494,17 +493,19 @@ export function iniciarBanco(ctx) {
   $("#b-dificuldade", area).addEventListener("change", (ev) => { filtros.dificuldade = ev.target.value; aoMudarFiltro(); });
   $("#b-status", area).addEventListener("change", (ev) => { filtros.status = ev.target.value; aoMudarFiltro(); });
   $("#b-minhas", area).addEventListener("change", (ev) => { filtros.soMinhas = ev.target.checked; aoMudarFiltro(); });
+  $("#b-arquivadas", area).addEventListener("change", (ev) => { filtros.arquivadas = ev.target.checked; aoMudarFiltro(); });
 
   $("#b-limpar-filtros", area).addEventListener("click", () => {
     Object.assign(filtros, {
       busca: "", segmento: "", ano: "", disciplina: "", bimestre: "",
-      tipo: "", dificuldade: "", status: "", soMinhas: false
+      tipo: "", dificuldade: "", status: "", soMinhas: false, arquivadas: false
     });
     $("#b-busca", area).value = "";
     selSegmento.value = "";
     preencherAnoEDisciplina();
     ["#b-bimestre", "#b-tipo", "#b-dificuldade", "#b-status"].forEach((id) => { $(id, area).value = ""; });
     $("#b-minhas", area).checked = false;
+    $("#b-arquivadas", area).checked = false;
     aoMudarFiltro();
   });
 
