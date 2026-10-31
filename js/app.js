@@ -10,6 +10,7 @@ import {
 import { firebaseConfig, escola, configurado } from "./firebase-config.js";
 import { iniciarQuestoes } from "./questoes.js";
 import { iniciarBanco } from "./banco.js";
+import { iniciarImportacao } from "./importacao.js";
 
 // ---------- Utilidades ----------
 const $ = (seletor, raiz = document) => raiz.querySelector(seletor);
@@ -101,7 +102,7 @@ function mostrarApp() {
   if (banco && location.hash === "#banco") banco.carregar();
 }
 
-const VIEWS = ["inicio", "banco", "nova", "provas", "acessibilidade", "auditoria"];
+const VIEWS = ["inicio", "banco", "nova", "importar", "provas", "acessibilidade", "auditoria"];
 
 function navegar() {
   let nome = location.hash.replace("#", "");
@@ -248,6 +249,7 @@ function configurarFormularios() {
 // ---------- Inicialização ----------
 function iniciar() {
   configurarAbas();
+  iniciarImportacao({ db, estado, registrarAuditoria, aviso });
   window.addEventListener("hashchange", navegar);
 
   if (!configurado) {
