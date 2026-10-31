@@ -1,6 +1,6 @@
 // Cole aqui os dados do seu app web do Firebase:
 // Console Firebase > Configurações do projeto > Seus apps > App da Web > "Configuração do SDK"
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyCtl457XqXHV9ybPgqj1VLcBqb6r0WT-TI",
   authDomain: "banco-de-questoes-jk.firebaseapp.com",
   projectId: "banco-de-questoes-jk",
