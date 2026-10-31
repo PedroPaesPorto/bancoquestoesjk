@@ -105,7 +105,7 @@ export function iniciarImportacao(ctx) {
 
     try {
       // Inicializa o SDK oficial do Google Gen AI
-      const ai = new GoogleGenerativeAI({ apiKey });
+      const ai = new GoogleGenAI({ apiKey });
 
       const promptInstrucao = `
 Você é um assistente pedagógico especializado em organizar provas escolares.
