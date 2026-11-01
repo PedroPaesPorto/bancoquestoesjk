@@ -62,6 +62,21 @@
     .katex { font-size: 1.08em; }
     .katex-display { margin: 0.5rem 0; overflow-x: auto; overflow-y: hidden; }
 
+    /* ---- Prova (tela e impressão) ---- */
+    .folha { font-family: "Atkinson Hyperlegible", Verdana, Arial, sans-serif; color: #000; background: #fff; font-size: 11.5pt; line-height: 1.45; }
+    .folha-acessivel { font-size: 14pt; line-height: 2; letter-spacing: 0.02em; }
+    .folha-acessivel .alternativa { margin-top: 0.6em; }
+    #folha-impressao { display: none; }
+
+    @media print {
+      @page { margin: 14mm; }
+      body { background: #fff !important; height: auto; }
+      html { height: auto; }
+      body > *:not(#folha-impressao) { display: none !important; }
+      #folha-impressao { display: block !important; }
+      .questao-prova { break-inside: avoid; }
+    }
+
     @media (prefers-reduced-motion: reduce) {
       * { transition: none !important; }
     }
@@ -254,7 +269,7 @@
             <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 2 (pronto):</strong> cadastro de questões com taxonomia curricular.</li>
             <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 3 (pronto):</strong> banco com filtros e validação pelo Supervisor.</li>
             <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 4 (pronto):</strong> imagens, fórmulas, texto de apoio, responsável, arquivar, equipe e backup.</li>
-            <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 5:</strong> geração de provas para impressão e PDF.</li>
+            <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 5 (pronto):</strong> geração de provas para impressão e PDF.</li>
             <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 6:</strong> IA: importação por foto, PDF ou Word e adaptação (TEA e não leitores).</li>
             <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 7:</strong> painel de auditoria.</li>
           </ol>
@@ -267,13 +282,7 @@
         <section data-view="nova" id="area-nova" class="hidden"></section>
 
         <!-- Gerar prova -->
-        <section data-view="provas" class="hidden">
-          <h1 class="text-2xl font-bold">Gerar prova</h1>
-          <div class="mt-5 rounded-xl border border-dashed border-[#9FB0BE] bg-white p-6">
-            <p class="font-bold">A montagem de provas entra no Passo 5.</p>
-            <p class="mt-1 text-[#33475B]">Cabeçalho da escola, filtros por assunto e dificuldade, Banco Oficial por padrão (com opção de incluir as pendentes) e saída pronta para imprimir ou salvar em PDF.</p>
-          </div>
-        </section>
+        <section data-view="provas" id="area-provas" class="hidden"></section>
 
         <!-- Acessibilidade -->
         <section data-view="acessibilidade" class="hidden">
@@ -309,6 +318,8 @@
       <a href="#equipe" data-nav="equipe" class="nav-baixo so-supervisor hidden"><svg class="ico" aria-hidden="true"><use href="#i-equipe"/></svg>Equipe</a>
     </nav>
   </div>
+
+  <div id="folha-impressao"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/contrib/mhchem.min.js"></script>
