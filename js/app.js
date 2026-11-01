@@ -12,6 +12,7 @@ import { iniciarQuestoes } from "./questoes.js";
 import { iniciarBanco } from "./banco.js";
 import { iniciarEquipe } from "./equipe.js";
 import { iniciarProvas } from "./provas.js";
+import { iniciarAdaptar } from "./adaptar.js";
 import { $, $$, rotuloCargo } from "./util.js";
 
 // ---------- Utilidades ----------
@@ -57,6 +58,7 @@ let db = null;
 let banco = null;
 let equipe = null;
 let provas = null;
+let adaptar = null;
 
 // ---------- Auditoria ----------
 // Só contas ativas conseguem gravar (as regras do Firestore exigem).
@@ -324,11 +326,29 @@ function iniciar() {
   db = getFirestore(app);
   configurarFormularios();
 
-  const base = { db, estado, registrarAuditoria, aviso, aoAlterar: carregarResumo };
+  const base = {
+    db,
+    estado,
+    registrarAuditoria,
+    aviso,
+    aoAlterar: carregarResumo,
+    obterToken: () => auth.currentUser.getIdToken()
+  };
 
   const questoes = iniciarQuestoes({ ...base, aoSalvar: carregarResumo });
+  adaptar = iniciarAdaptar({
+    ...base,
+    aoUsarVersao: async (original, adaptado, meta) => {
+      await questoes.versaoAdaptada(original, adaptado, meta);
+      location.hash = "#nova";
+    }
+  });
   banco = iniciarBanco({
     ...base,
+    aoAdaptar: async (questao) => {
+      await adaptar.abrir(questao);
+      location.hash = "#acessibilidade";
+    },
     aoEditar: async (questao) => {
       await questoes.editar(questao);
       location.hash = "#nova";
@@ -349,6 +369,7 @@ function iniciar() {
       if (banco) banco.limpar();
       if (equipe) equipe.limpar();
       if (provas) provas.limpar();
+      if (adaptar) adaptar.limpar();
       mostrarLogin();
       return;
     }
