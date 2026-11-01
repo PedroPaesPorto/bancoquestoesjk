@@ -28,7 +28,7 @@ export function iniciarBanco(ctx) {
 
   const filtros = {
     busca: "", segmento: "", ano: "", disciplina: "", bimestre: "",
-    tipo: "", dificuldade: "", status: "", soMinhas: false, arquivadas: false
+    tipo: "", dificuldade: "", status: "", adaptacao: "", soMinhas: false, arquivadas: false
   };
 
   function opcoesHtml(itens, textoVazio) {
@@ -87,6 +87,15 @@ export function iniciarBanco(ctx) {
           <select id="b-status" class="campo">${opcoesHtml(
             Object.entries(STATUS).map(([valor, s]) => ({ valor, rotulo: s.rotulo })), "Todas")}</select>
         </div>
+        <div>
+          <label class="rotulo" for="b-adaptacao">Adaptação</label>
+          <select id="b-adaptacao" class="campo">
+            <option value="">Todas</option>
+            <option value="nenhuma">Sem adaptação</option>
+            <option value="tea">Adaptada para TEA</option>
+            <option value="nao_leitor">Adaptada para não leitores</option>
+          </select>
+        </div>
         <div class="flex items-end">
           <label class="flex items-center gap-3 py-3 font-bold">
             <input id="b-minhas" type="checkbox" class="h-5 w-5 accent-[#0F6B6B]">
@@ -142,6 +151,8 @@ export function iniciarBanco(ctx) {
       if (filtros.tipo && q.tipo !== filtros.tipo) return false;
       if (filtros.dificuldade && q.dificuldade !== filtros.dificuldade) return false;
       if (filtros.status && q.statusValidacao !== filtros.status) return false;
+      if (filtros.adaptacao === "nenhuma" && q.adaptacao) return false;
+      if (filtros.adaptacao && filtros.adaptacao !== "nenhuma" && q.adaptacao !== filtros.adaptacao) return false;
       if (filtros.soMinhas && responsavelUidDe(q) !== meuUid) return false;
       if (busca) {
         const texto = normalizar([q.assunto, q.enunciado, q.habilidade, q.disciplina, q.criadoPor, responsavelNomeDe(q)].join(" "));
@@ -202,6 +213,23 @@ export function iniciarBanco(ctx) {
         hab.appendChild(document.createTextNode(q.habilidade));
         conteudo.appendChild(hab);
       }
+      if (q.adaptacao) {
+        const caixaAdaptacao = el("div", "mt-3 rounded-lg bg-petroleo-claro p-3 text-sm");
+        caixaAdaptacao.appendChild(el("p", "font-bold", `Versão adaptada ${q.adaptacao === "tea" ? "para TEA" : "para não leitores"}${q.adaptacaoPorIA ? " (gerada com IA e revisada por professor)" : ""}`));
+        if (q.adaptacaoOrientacao) {
+          const orient = el("p", "mt-1 whitespace-pre-wrap");
+          orient.appendChild(el("strong", "", "Orientação a quem aplica: "));
+          orient.appendChild(document.createTextNode(q.adaptacaoOrientacao));
+          caixaAdaptacao.appendChild(orient);
+        }
+        (q.adaptacaoSuportesVisuais || []).forEach((s) => {
+          const linhaSuporte = el("p", "mt-1");
+          linhaSuporte.appendChild(el("strong", "", `Imagem de apoio (${s.onde}): `));
+          linhaSuporte.appendChild(document.createTextNode(s.descricao));
+          caixaAdaptacao.appendChild(linhaSuporte);
+        });
+        conteudo.appendChild(caixaAdaptacao);
+      }
       conteudo.appendChild(el("p", "mt-3 border-t border-[#E3E9EE] pt-3 text-sm text-[#4B5C6B]", linhaAuditoria(q)));
     } catch (e) {
       console.error(e);
@@ -221,6 +249,7 @@ export function iniciarBanco(ctx) {
     const selos = el("div", "flex flex-wrap gap-2");
     selos.appendChild(el("span", `rounded-full border px-3 py-1 text-sm font-bold ${situacao.classes}`, situacao.rotulo));
     if (q.arquivada) selos.appendChild(el("span", "rounded-full border border-[#33475B] bg-[#E8EDF1] px-3 py-1 text-sm font-bold text-[#33475B]", "Arquivada"));
+    if (q.adaptacao) selos.appendChild(el("span", "rounded-full border border-petroleo bg-petroleo-claro px-3 py-1 text-sm font-bold text-petroleo-escuro", q.adaptacao === "tea" ? "Adaptada: TEA" : "Adaptada: não leitor"));
     selos.appendChild(el("span", "rounded-full border border-[#B9C4CE] px-3 py-1 text-sm font-bold text-[#33475B]", DIFICULDADES[q.dificuldade] || ""));
     selos.appendChild(el("span", "rounded-full border border-[#B9C4CE] px-3 py-1 text-sm font-bold text-[#33475B]", TIPOS[q.tipo] || ""));
     item.appendChild(selos);
@@ -272,6 +301,7 @@ export function iniciarBanco(ctx) {
     if (podeMexer) {
       botao("Editar", "border-2 border-[#9FB0BE] text-[#33475B] hover:bg-giz", () => ctx.aoEditar(q));
     }
+    botao("Adaptar com IA", "border-2 border-petroleo text-petroleo hover:bg-petroleo-claro", () => ctx.aoAdaptar(q));
     botao("Criar versão", "border-2 border-[#9FB0BE] text-[#33475B] hover:bg-giz", () => ctx.aoVersao(q));
     if (ehSupervisor) {
       botao(q.arquivada ? "Restaurar" : "Arquivar", "border-2 border-[#9FB0BE] text-[#33475B] hover:bg-giz", () => alternarArquivo(q));
@@ -492,18 +522,19 @@ export function iniciarBanco(ctx) {
   $("#b-tipo", area).addEventListener("change", (ev) => { filtros.tipo = ev.target.value; aoMudarFiltro(); });
   $("#b-dificuldade", area).addEventListener("change", (ev) => { filtros.dificuldade = ev.target.value; aoMudarFiltro(); });
   $("#b-status", area).addEventListener("change", (ev) => { filtros.status = ev.target.value; aoMudarFiltro(); });
+  $("#b-adaptacao", area).addEventListener("change", (ev) => { filtros.adaptacao = ev.target.value; aoMudarFiltro(); });
   $("#b-minhas", area).addEventListener("change", (ev) => { filtros.soMinhas = ev.target.checked; aoMudarFiltro(); });
   $("#b-arquivadas", area).addEventListener("change", (ev) => { filtros.arquivadas = ev.target.checked; aoMudarFiltro(); });
 
   $("#b-limpar-filtros", area).addEventListener("click", () => {
     Object.assign(filtros, {
       busca: "", segmento: "", ano: "", disciplina: "", bimestre: "",
-      tipo: "", dificuldade: "", status: "", soMinhas: false, arquivadas: false
+      tipo: "", dificuldade: "", status: "", adaptacao: "", soMinhas: false, arquivadas: false
     });
     $("#b-busca", area).value = "";
     selSegmento.value = "";
     preencherAnoEDisciplina();
-    ["#b-bimestre", "#b-tipo", "#b-dificuldade", "#b-status"].forEach((id) => { $(id, area).value = ""; });
+    ["#b-bimestre", "#b-tipo", "#b-dificuldade", "#b-status", "#b-adaptacao"].forEach((id) => { $(id, area).value = ""; });
     $("#b-minhas", area).checked = false;
     $("#b-arquivadas", area).checked = false;
     aoMudarFiltro();
