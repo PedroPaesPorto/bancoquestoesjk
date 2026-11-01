@@ -270,7 +270,8 @@
             <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 3 (pronto):</strong> banco com filtros e validação pelo Supervisor.</li>
             <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 4 (pronto):</strong> imagens, fórmulas, texto de apoio, responsável, arquivar, equipe e backup.</li>
             <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 5 (pronto):</strong> geração de provas para impressão e PDF.</li>
-            <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 6:</strong> IA: importação por foto, PDF ou Word e adaptação (TEA e não leitores).</li>
+            <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 6A (pronto):</strong> IA que adapta questões para TEA e para não leitores.</li>
+            <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 6B:</strong> IA que importa provas por foto, PDF ou Word.</li>
             <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 7:</strong> painel de auditoria.</li>
           </ol>
         </section>
@@ -284,14 +285,8 @@
         <!-- Gerar prova -->
         <section data-view="provas" id="area-provas" class="hidden"></section>
 
-        <!-- Acessibilidade -->
-        <section data-view="acessibilidade" class="hidden">
-          <h1 class="text-2xl font-bold">Adaptar com IA</h1>
-          <div class="mt-5 rounded-xl border border-dashed border-[#9FB0BE] bg-white p-6">
-            <p class="font-bold">O motor de IA entra no Passo 6.</p>
-            <p class="mt-1 text-[#33475B]">Importação de provas por foto, PDF ou Word, enunciados diretos para alunos com TEA, vocabulário simples para não leitores e formatação com espaçamento duplo e fontes legíveis.</p>
-          </div>
-        </section>
+        <!-- Adaptar com IA -->
+        <section data-view="acessibilidade" id="area-adaptar" class="hidden"></section>
 
         <!-- Equipe (Supervisor) -->
         <section data-view="equipe" id="area-equipe" class="hidden so-supervisor"></section>
