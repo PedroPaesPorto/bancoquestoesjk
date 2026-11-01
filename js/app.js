@@ -11,6 +11,7 @@ import { firebaseConfig, escola, configurado } from "./firebase-config.js";
 import { iniciarQuestoes } from "./questoes.js";
 import { iniciarBanco } from "./banco.js";
 import { iniciarEquipe } from "./equipe.js";
+import { iniciarProvas } from "./provas.js";
 import { $, $$, rotuloCargo } from "./util.js";
 
 // ---------- Utilidades ----------
@@ -55,6 +56,7 @@ let auth = null;
 let db = null;
 let banco = null;
 let equipe = null;
+let provas = null;
 
 // ---------- Auditoria ----------
 // Só contas ativas conseguem gravar (as regras do Firestore exigem).
@@ -131,6 +133,7 @@ function mostrarApp() {
   carregarResumo();
   if (banco && location.hash === "#banco") banco.carregar();
   if (equipe && location.hash === "#equipe") equipe.carregar();
+  if (provas && location.hash === "#provas") provas.carregarSalvas();
 }
 
 async function carregarResumo() {
@@ -336,6 +339,7 @@ function iniciar() {
     }
   });
   equipe = iniciarEquipe(base);
+  provas = iniciarProvas(base);
 
   onAuthStateChanged(auth, async (user) => {
     if (estado.cadastrando) return; // o fluxo de cadastro conclui sozinho
@@ -344,6 +348,7 @@ function iniciar() {
       estado.perfil = null;
       if (banco) banco.limpar();
       if (equipe) equipe.limpar();
+      if (provas) provas.limpar();
       mostrarLogin();
       return;
     }
