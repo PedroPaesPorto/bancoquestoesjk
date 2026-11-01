@@ -55,7 +55,7 @@ export function iniciarProvas(ctx) {
   let salvas = [];
   let tokenPrevia = 0;
 
-  const filtros = { assunto: "", dificuldade: "", tipo: "", busca: "" };
+  const filtros = { assunto: "", dificuldade: "", tipo: "", adaptacao: "", busca: "" };
 
   const opcoes = (itens, vazio) =>
     `<option value="">${vazio}</option>` + itens.map((i) => `<option value="${i.valor}">${i.rotulo}</option>`).join("");
@@ -118,6 +118,15 @@ export function iniciarProvas(ctx) {
             <label class="rotulo" for="p-f-tipo">Tipo</label>
             <select id="p-f-tipo" class="campo">${opcoes(
               Object.entries(TIPOS).map(([valor, rotulo]) => ({ valor, rotulo })), "Todos")}</select>
+          </div>
+          <div>
+            <label class="rotulo" for="p-f-adapt">Versão da questão</label>
+            <select id="p-f-adapt" class="campo">
+              <option value="">Todas</option>
+              <option value="nenhuma">Sem adaptação</option>
+              <option value="tea">Adaptada para TEA</option>
+              <option value="nao_leitor">Adaptada para não leitores</option>
+            </select>
           </div>
           <div>
             <label class="rotulo" for="p-f-busca">Buscar por texto</label>
@@ -306,7 +315,8 @@ export function iniciarProvas(ctx) {
 
       const assuntos = [...new Set(pool.map((q) => q.assunto).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
       $("#p-f-assunto", area).innerHTML = `<option value="">Todos</option>` + assuntos.map((a) => `<option value="${a.replace(/"/g, "&quot;")}">${a.replace(/</g, "&lt;")}</option>`).join("");
-      Object.assign(filtros, { assunto: "", dificuldade: "", tipo: "", busca: "" });
+      Object.assign(filtros, { assunto: "", dificuldade: "", tipo: "", adaptacao: "", busca: "" });
+      $("#p-f-adapt", area).value = "";
       $("#p-f-dif", area).value = "";
       $("#p-f-tipo", area).value = "";
       $("#p-f-busca", area).value = "";
@@ -333,6 +343,8 @@ export function iniciarProvas(ctx) {
       if (filtros.assunto && q.assunto !== filtros.assunto) return false;
       if (filtros.dificuldade && q.dificuldade !== filtros.dificuldade) return false;
       if (filtros.tipo && q.tipo !== filtros.tipo) return false;
+      if (filtros.adaptacao === "nenhuma" && q.adaptacao) return false;
+      if (filtros.adaptacao && filtros.adaptacao !== "nenhuma" && q.adaptacao !== filtros.adaptacao) return false;
       if (busca && !normalizar([q.assunto, q.enunciado, q.habilidade].join(" ")).includes(busca)) return false;
       return true;
     });
@@ -361,6 +373,7 @@ export function iniciarProvas(ctx) {
     if (q.statusValidacao !== "aprovada") {
       selos.appendChild(el("span", "rounded-full border border-marca bg-[#FFF6DB] px-3 py-0.5 text-sm font-bold text-[#6B4E00]", "Aguardando validação"));
     }
+    if (q.adaptacao) selos.appendChild(el("span", "rounded-full border border-petroleo bg-petroleo-claro px-3 py-0.5 text-sm font-bold text-petroleo-escuro", q.adaptacao === "tea" ? "Adaptada: TEA" : "Adaptada: não leitor"));
     if (q.textoApoioId) selos.appendChild(el("span", "rounded-full border border-[#B9C4CE] px-3 py-0.5 text-sm font-bold text-[#33475B]", "Com texto de apoio"));
     item.appendChild(selos);
 
@@ -781,6 +794,7 @@ export function iniciarProvas(ctx) {
   $("#p-f-assunto", area).addEventListener("change", (ev) => { filtros.assunto = ev.target.value; aoFiltrar(); });
   $("#p-f-dif", area).addEventListener("change", (ev) => { filtros.dificuldade = ev.target.value; aoFiltrar(); });
   $("#p-f-tipo", area).addEventListener("change", (ev) => { filtros.tipo = ev.target.value; aoFiltrar(); });
+  $("#p-f-adapt", area).addEventListener("change", (ev) => { filtros.adaptacao = ev.target.value; aoFiltrar(); });
   $("#p-f-busca", area).addEventListener("input", (ev) => { filtros.busca = ev.target.value; aoFiltrar(); });
   $("#p-mais", area).addEventListener("click", () => { visiveis += POR_PAGINA; desenharPool(); });
   $("#p-sortear", area).addEventListener("click", sortear);
