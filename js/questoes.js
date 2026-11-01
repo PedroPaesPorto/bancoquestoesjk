@@ -221,7 +221,7 @@ function htmlFormulario() {
 
 export function iniciarQuestoes(ctx) {
   const area = document.getElementById("area-nova");
-  if (!area) return { async editar() {}, async versao() {} };
+  if (!area) return { async editar() {}, async versao() {}, async versaoAdaptada() {} };
   area.innerHTML = htmlFormulario();
 
   const form = $("#form-questao", area);
@@ -237,6 +237,7 @@ export function iniciarQuestoes(ctx) {
   let salvasNaSessao = 0;
   let modo = "novo"; // "novo" | "editar" | "versao"
   let alvo = null;   // { id } da questão editada ou usada como base da nova versão
+  let adaptacaoAtual = null; // { tipo, suportesVisuais, orientacao } quando a versão vem da IA
   let tokenPrevia = 0;
   let temporizadorPrevia = null;
 
@@ -314,6 +315,10 @@ export function iniciarQuestoes(ctx) {
         botao: "Salvar nova versão"
       }
     }[modo];
+    if (modo === "versao" && adaptacaoAtual) {
+      textos.titulo = "Nova versão adaptada";
+      textos.banner = `Versão adaptada ${adaptacaoAtual.tipo === "tea" ? "para alunos com TEA" : "para alunos não leitores"}, gerada com IA. Revise tudo com cuidado antes de salvar. A questão original continua no banco.`;
+    }
     $("#q-titulo", area).textContent = textos.titulo;
     $("#q-banner-texto", area).textContent = textos.banner;
     const banner = $("#q-banner", area);
@@ -325,6 +330,7 @@ export function iniciarQuestoes(ctx) {
   function voltarParaNovo() {
     modo = "novo";
     alvo = null;
+    adaptacaoAtual = null;
     atualizarModo();
   }
 
@@ -580,6 +586,7 @@ export function iniciarQuestoes(ctx) {
   async function editar(questao) {
     modo = "editar";
     alvo = { id: questao.id };
+    adaptacaoAtual = null;
     await preencherComQuestao(questao);
     atualizarModo();
   }
@@ -587,8 +594,43 @@ export function iniciarQuestoes(ctx) {
   async function versao(questao) {
     modo = "versao";
     alvo = { id: questao.id };
+    adaptacaoAtual = null;
     await preencherComQuestao(questao);
     atualizarModo();
+  }
+
+  // Abre o formulário com o texto adaptado pela IA. As imagens e os dados da questão original são mantidos.
+  async function versaoAdaptada(original, adaptado, meta) {
+    modo = "versao";
+    alvo = { id: original.id };
+    adaptacaoAtual = null;
+    await preencherComQuestao(original);
+
+    $("#q-enunciado", area).value = adaptado.enunciado || "";
+    $("#q-justificativa", area).value = adaptado.justificativa || original.justificativa || "";
+
+    if (original.tipo === "multipla_escolha") {
+      const originais = new Map((original.alternativas || []).map((alt) => [alt.letra, alt]));
+      LETRAS.forEach((letra) => {
+        $(`#alt-${letra}`, area).value = "";
+        $(`#gab-${letra}`, area).checked = false;
+        seletoresAlt[letra].limpar();
+      });
+      for (const alt of adaptado.alternativas || []) {
+        if (!LETRAS.includes(alt.letra)) continue;
+        $(`#alt-${alt.letra}`, area).value = alt.texto || "";
+        const base = originais.get(alt.origemLetra);
+        if (base && base.imagemId) await seletoresAlt[alt.letra].carregarIds([base.imagemId]);
+      }
+      const radio = $(`#gab-${adaptado.gabarito}`, area);
+      if (radio) radio.checked = true;
+    } else {
+      $("#q-gabarito-disc", area).value = adaptado.gabarito || original.gabarito || "";
+    }
+
+    adaptacaoAtual = meta;
+    atualizarModo();
+    agendarPrevia();
   }
 
   // ----- Eventos -----
@@ -744,12 +786,17 @@ export function iniciarQuestoes(ctx) {
         arquivada: false,
         origem: "manual",
         derivadaDeId: modo === "versao" && alvo ? alvo.id : null,
+        adaptacao: adaptacaoAtual ? adaptacaoAtual.tipo : null,
+        adaptacaoSuportesVisuais: adaptacaoAtual ? adaptacaoAtual.suportesVisuais || [] : [],
+        adaptacaoOrientacao: adaptacaoAtual ? adaptacaoAtual.orientacao || "" : "",
+        adaptacaoPorIA: Boolean(adaptacaoAtual),
         schemaVersao: 2
       });
 
       await ctx.registrarAuditoria(modo === "versao" ? "questao_versao_criada" : "questao_criada", {
         questaoId: ref.id,
         derivadaDeId: modo === "versao" && alvo ? alvo.id : null,
+        adaptacao: adaptacaoAtual ? adaptacaoAtual.tipo : null,
         segmento: d.segmento,
         ano: d.ano,
         disciplina: d.disciplina,
@@ -786,5 +833,5 @@ export function iniciarQuestoes(ctx) {
   limparTudo();
   atualizarModo();
 
-  return { editar, versao };
+  return { editar, versao, versaoAdaptada };
 }
