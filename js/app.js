@@ -13,6 +13,7 @@ import { iniciarBanco } from "./banco.js";
 import { iniciarEquipe } from "./equipe.js";
 import { iniciarProvas } from "./provas.js";
 import { iniciarAdaptar } from "./adaptar.js";
+import { iniciarImportar } from "./importar.js";
 import { $, $$, rotuloCargo } from "./util.js";
 
 // ---------- Utilidades ----------
@@ -59,6 +60,7 @@ let banco = null;
 let equipe = null;
 let provas = null;
 let adaptar = null;
+let importar = null;
 
 // ---------- Auditoria ----------
 // Só contas ativas conseguem gravar (as regras do Firestore exigem).
@@ -99,7 +101,7 @@ function mostrarPendente() {
   $("#pendente-quem").textContent = estado.perfil ? `${estado.perfil.nome} (${estado.perfil.email})` : "";
 }
 
-const VIEWS = ["inicio", "banco", "nova", "provas", "acessibilidade", "equipe", "auditoria"];
+const VIEWS = ["inicio", "banco", "nova", "importar", "provas", "acessibilidade", "equipe", "auditoria"];
 const SO_SUPERVISOR = ["equipe", "auditoria"];
 
 function navegar() {
@@ -358,6 +360,12 @@ function iniciar() {
       location.hash = "#nova";
     }
   });
+  importar = iniciarImportar({
+    ...base,
+    aoRevisar: async (item, info) => {
+      await questoes.carregarImportada(item, info);
+    }
+  });
   equipe = iniciarEquipe(base);
   provas = iniciarProvas(base);
 
@@ -370,6 +378,7 @@ function iniciar() {
       if (equipe) equipe.limpar();
       if (provas) provas.limpar();
       if (adaptar) adaptar.limpar();
+      if (importar) importar.limpar();
       mostrarLogin();
       return;
     }
