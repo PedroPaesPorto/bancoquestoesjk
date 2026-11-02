@@ -37,7 +37,9 @@ export async function chamarIA(ctx, rota, corpo) {
     console.error("Erro da IA:", resposta.status, dados);
     const base = (dados && dados.mensagem) || `A IA não respondeu (código ${resposta.status}).`;
     // O detalhe técnico ajuda a diagnosticar nos primeiros testes.
-    throw new Error(dados && dados.detalhe ? `${base} Detalhe: ${dados.detalhe}` : base);
+    const erro = new Error(dados && dados.detalhe ? `${base} Detalhe: ${dados.detalhe}` : base);
+    erro.status = resposta.status;
+    throw erro;
   }
   return dados;
 }
