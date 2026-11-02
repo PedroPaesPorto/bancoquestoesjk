@@ -12,44 +12,39 @@ const cacheImagens = new Map();
 const cacheApoios = new Map();
 
 // ---------- Redução de imagem no navegador ----------
-function abrirImagem(arquivo) {
+export function abrirImagemDeUrl(url) {
   return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(arquivo);
     const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve(img);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("Não consegui abrir esta imagem. Tente JPG, PNG ou WebP."));
-    };
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Não consegui abrir esta imagem. Tente JPG, PNG ou WebP."));
     img.src = url;
   });
 }
 
-export async function reduzirImagem(arquivo) {
-  if (!arquivo.type.startsWith("image/")) {
-    throw new Error("Escolha um arquivo de imagem (JPG, PNG ou WebP).");
+export async function abrirImagem(arquivo) {
+  const url = URL.createObjectURL(arquivo);
+  try {
+    return await abrirImagemDeUrl(url);
+  } finally {
+    URL.revokeObjectURL(url);
   }
-  if (arquivo.size > 20 * 1024 * 1024) {
-    throw new Error("A imagem é grande demais (máximo 20 MB).");
-  }
+}
 
-  const img = await abrirImagem(arquivo);
-  let escala = Math.min(1, MAX_LADO / Math.max(img.naturalWidth, img.naturalHeight));
+// Reduz qualquer fonte desenhável (imagem ou canvas) até caber no limite.
+export async function reduzirFonte(fonte, larguraOriginal, alturaOriginal) {
+  let escala = Math.min(1, MAX_LADO / Math.max(larguraOriginal, alturaOriginal));
   let qualidade = 0.85;
 
   for (let tentativa = 0; tentativa < 14; tentativa++) {
-    const largura = Math.max(1, Math.round(img.naturalWidth * escala));
-    const altura = Math.max(1, Math.round(img.naturalHeight * escala));
+    const largura = Math.max(1, Math.round(larguraOriginal * escala));
+    const altura = Math.max(1, Math.round(alturaOriginal * escala));
     const tela = document.createElement("canvas");
     tela.width = largura;
     tela.height = altura;
     const contexto = tela.getContext("2d");
     contexto.fillStyle = "#ffffff";
     contexto.fillRect(0, 0, largura, altura);
-    contexto.drawImage(img, 0, 0, largura, altura);
+    contexto.drawImage(fonte, 0, 0, largura, altura);
 
     let dataUrl = tela.toDataURL("image/webp", qualidade);
     if (!dataUrl.startsWith("data:image/webp")) dataUrl = tela.toDataURL("image/jpeg", qualidade);
@@ -60,6 +55,22 @@ export async function reduzirImagem(arquivo) {
     else escala *= 0.8;
   }
   throw new Error("Não consegui reduzir a imagem o bastante. Recorte só a parte necessária e tente de novo.");
+}
+
+export async function reduzirImagem(arquivo) {
+  if (!arquivo.type.startsWith("image/")) {
+    throw new Error("Escolha um arquivo de imagem (JPG, PNG ou WebP).");
+  }
+  if (arquivo.size > 20 * 1024 * 1024) {
+    throw new Error("A imagem é grande demais (máximo 20 MB).");
+  }
+  const img = await abrirImagem(arquivo);
+  return reduzirFonte(img, img.naturalWidth, img.naturalHeight);
+}
+
+export async function reduzirDataUrl(dataUrl) {
+  const img = await abrirImagemDeUrl(dataUrl);
+  return reduzirFonte(img, img.naturalWidth, img.naturalHeight);
 }
 
 // ---------- Leitura e gravação ----------
@@ -219,6 +230,14 @@ export function criarSeletorImagens(container, { max = 4, rotuloBotao = "Adicion
   return {
     getItens: () => itens,
     onChange: (fn) => ouvintes.push(fn),
+    // Adiciona uma imagem já pronta (usado na importação). Devolve false se não couber.
+    adicionar(item) {
+      if (itens.length >= max) return false;
+      itens.push({ dataUrl: item.dataUrl, alt: item.alt || "", largura: item.largura || 0, altura: item.altura || 0 });
+      desenhar();
+      avisar();
+      return true;
+    },
     limpar() {
       itens = [];
       mostrarErro("");
