@@ -93,6 +93,7 @@
     <symbol id="i-ia" viewBox="0 0 24 24"><path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/></symbol>
     <symbol id="i-auditoria" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></symbol>
     <symbol id="i-equipe" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.4c2.2.7 3.5 2.6 3.5 5.6"/></symbol>
+    <symbol id="i-importar" viewBox="0 0 24 24"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M4 15v4h16v-4"/></symbol>
     <symbol id="i-sair" viewBox="0 0 24 24"><path d="M9 4H5v16h4M16 8l4 4-4 4M20 12H9"/></symbol>
   </svg>
 
@@ -205,6 +206,7 @@
         <a href="#inicio" data-nav="inicio" class="nav-item"><svg class="ico" aria-hidden="true"><use href="#i-inicio"/></svg>Início</a>
         <a href="#banco" data-nav="banco" class="nav-item"><svg class="ico" aria-hidden="true"><use href="#i-banco"/></svg>Banco de questões</a>
         <a href="#nova" data-nav="nova" class="nav-item"><svg class="ico" aria-hidden="true"><use href="#i-nova"/></svg>Nova questão</a>
+        <a href="#importar" data-nav="importar" class="nav-item"><svg class="ico" aria-hidden="true"><use href="#i-importar"/></svg>Importar prova</a>
         <a href="#provas" data-nav="provas" class="nav-item"><svg class="ico" aria-hidden="true"><use href="#i-provas"/></svg>Gerar prova</a>
         <a href="#acessibilidade" data-nav="acessibilidade" class="nav-item"><svg class="ico" aria-hidden="true"><use href="#i-ia"/></svg>Adaptar com IA</a>
         <a href="#equipe" data-nav="equipe" class="nav-item so-supervisor hidden"><svg class="ico" aria-hidden="true"><use href="#i-equipe"/></svg>Equipe</a>
@@ -271,7 +273,7 @@
             <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 4 (pronto):</strong> imagens, fórmulas, texto de apoio, responsável, arquivar, equipe e backup.</li>
             <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 5 (pronto):</strong> geração de provas para impressão e PDF.</li>
             <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 6A (pronto):</strong> IA que adapta questões para TEA e para não leitores.</li>
-            <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 6B:</strong> IA que importa provas por foto, PDF ou Word.</li>
+            <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 6B (pronto):</strong> IA que importa provas por foto, PDF ou Word.</li>
             <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 7:</strong> painel de auditoria.</li>
           </ol>
         </section>
@@ -281,6 +283,9 @@
 
         <!-- Nova questão -->
         <section data-view="nova" id="area-nova" class="hidden"></section>
+
+        <!-- Importar prova de arquivo -->
+        <section data-view="importar" id="area-importar" class="hidden"></section>
 
         <!-- Gerar prova -->
         <section data-view="provas" id="area-provas" class="hidden"></section>
