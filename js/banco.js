@@ -42,10 +42,13 @@ export function iniciarBanco(ctx) {
         <h1 class="text-2xl font-bold sm:text-3xl">Banco de questões</h1>
         <p class="mt-1 text-[#33475B]">Questões marcadas como Banco Oficial já foram validadas pela coordenação.</p>
       </div>
-      <button type="button" id="b-atualizar"
-              class="rounded-[10px] border-2 border-petroleo px-4 py-2 font-bold text-petroleo hover:bg-petroleo-claro">
-        Atualizar lista
-      </button>
+      <div class="flex flex-wrap gap-2">
+        <a href="#importar" class="rounded-[10px] bg-petroleo px-4 py-2 font-bold text-white hover:bg-petroleo-escuro">Importar prova</a>
+        <button type="button" id="b-atualizar"
+                class="rounded-[10px] border-2 border-petroleo px-4 py-2 font-bold text-petroleo hover:bg-petroleo-claro">
+          Atualizar lista
+        </button>
+      </div>
     </div>
 
     <section class="mt-5 rounded-xl border border-[#D5DDE4] bg-white p-4" aria-label="Filtros">
