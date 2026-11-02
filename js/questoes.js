@@ -87,13 +87,20 @@ function htmlFormulario() {
   return `
     <h1 id="q-titulo" class="text-2xl font-bold sm:text-3xl">Nova questão</h1>
     <p class="mt-1 text-[#33475B]">Toda questão nova fica aguardando validação até o Supervisor aprovar.</p>
+    <p class="mt-2"><a href="#importar" class="font-bold text-petroleo underline underline-offset-4">Tem uma prova pronta em foto, PDF ou Word? Importe de um arquivo.</a></p>
 
     <div id="q-banner" class="mt-4 hidden flex-col gap-2 rounded-xl border-2 border-marca bg-[#FFF6DB] p-4 sm:flex-row sm:items-center sm:justify-between" role="status">
       <p id="q-banner-texto" class="font-bold"></p>
-      <button type="button" id="q-cancelar-edicao"
-              class="rounded-[10px] border-2 border-[#9FB0BE] bg-white px-4 py-2 font-bold text-[#33475B]">
-        Cancelar
-      </button>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" id="q-pular"
+                class="hidden rounded-[10px] border-2 border-[#9FB0BE] bg-white px-4 py-2 font-bold text-[#33475B]">
+          Pular esta questão
+        </button>
+        <button type="button" id="q-cancelar-edicao"
+                class="rounded-[10px] border-2 border-[#9FB0BE] bg-white px-4 py-2 font-bold text-[#33475B]">
+          Cancelar
+        </button>
+      </div>
     </div>
 
     <form id="form-questao" class="mt-6 space-y-6" novalidate>
@@ -221,7 +228,7 @@ function htmlFormulario() {
 
 export function iniciarQuestoes(ctx) {
   const area = document.getElementById("area-nova");
-  if (!area) return { async editar() {}, async versao() {}, async versaoAdaptada() {} };
+  if (!area) return { async editar() {}, async versao() {}, async versaoAdaptada() {}, async carregarImportada() {} };
   area.innerHTML = htmlFormulario();
 
   const form = $("#form-questao", area);
@@ -238,6 +245,7 @@ export function iniciarQuestoes(ctx) {
   let modo = "novo"; // "novo" | "editar" | "versao"
   let alvo = null;   // { id } da questão editada ou usada como base da nova versão
   let adaptacaoAtual = null; // { tipo, suportesVisuais, orientacao } quando a versão vem da IA
+  let importacaoAtual = null; // { item, info } quando a questão vem de uma importação
   let tokenPrevia = 0;
   let temporizadorPrevia = null;
 
@@ -319,12 +327,28 @@ export function iniciarQuestoes(ctx) {
       textos.titulo = "Nova versão adaptada";
       textos.banner = `Versão adaptada ${adaptacaoAtual.tipo === "tea" ? "para alunos com TEA" : "para alunos não leitores"}, gerada com IA. Revise tudo com cuidado antes de salvar. A questão original continua no banco.`;
     }
+    if (importacaoAtual) {
+      const { item, info } = importacaoAtual;
+      const avisos = [];
+      if (item.gabaritoOrigem === "ia") avisos.push("O gabarito foi sugerido pela IA: confira.");
+      if (item.gabaritoOrigem === "nenhum") avisos.push("Não encontrei o gabarito: marque a resposta correta.");
+      if (item.cortada) avisos.push("A questão pode estar incompleta, pois passa de uma página.");
+      if (item.figurasSemRecorte > 0) avisos.push(`${item.figurasSemRecorte} figura(s) não foram recortadas: adicione a imagem à mão.`);
+      if (item.observacao) avisos.push(item.observacao);
+      textos.titulo = `Importar questão ${info.posicao} de ${info.total}`;
+      textos.banner = `Importando de ${info.nomeArquivo}. Confira o texto, as fórmulas e as figuras antes de salvar. ${avisos.join(" ")}`.trim();
+    }
     $("#q-titulo", area).textContent = textos.titulo;
     $("#q-banner-texto", area).textContent = textos.banner;
     const banner = $("#q-banner", area);
-    banner.classList.toggle("hidden", modo === "novo");
-    banner.classList.toggle("flex", modo !== "novo");
-    botaoSalvar.textContent = textos.botao;
+    const mostrarBanner = modo !== "novo" || Boolean(importacaoAtual);
+    banner.classList.toggle("hidden", !mostrarBanner);
+    banner.classList.toggle("flex", mostrarBanner);
+    $("#q-pular", area).classList.toggle("hidden", !importacaoAtual);
+    $("#q-cancelar-edicao", area).textContent = importacaoAtual ? "Parar importação" : "Cancelar";
+    botaoSalvar.textContent = importacaoAtual
+      ? (importacaoAtual.info.posicao === importacaoAtual.info.total ? "Salvar e concluir" : "Salvar e ir para a próxima")
+      : textos.botao;
   }
 
   function voltarParaNovo() {
@@ -633,6 +657,68 @@ export function iniciarQuestoes(ctx) {
     agendarPrevia();
   }
 
+  // ----- Importação: cada questão lida pela IA abre aqui para revisão -----
+  function finalizarImportacao(resultado) {
+    const atual = importacaoAtual;
+    importacaoAtual = null;
+    limparTudo();
+    voltarParaNovo();
+    if (atual && atual.info.aoFinalizar) atual.info.aoFinalizar(resultado);
+  }
+
+  async function carregarImportada(item, info) {
+    limparTudo();
+    modo = "novo";
+    alvo = null;
+    adaptacaoAtual = null;
+    importacaoAtual = { item, info };
+
+    const c = info.contexto;
+    selSegmento.value = c.segmento;
+    sincronizarSegmento();
+    selAno.value = c.ano;
+    selDisciplina.value = c.disciplina;
+    $("#q-bimestre", area).value = String(c.bimestre);
+    $("#q-assunto", area).value = item.assunto || "";
+    selTipo.value = item.tipo;
+    sincronizarTipo();
+    if (DIFICULDADES[item.dificuldade]) $("#q-dificuldade", area).value = item.dificuldade;
+    $("#q-enunciado", area).value = item.enunciado || "";
+    $("#q-justificativa", area).value = item.justificativa || "";
+    item.figurasEnunciado.forEach((img) => seletorEnunciado.adicionar(img));
+
+    if (item.tipo === "multipla_escolha") {
+      item.alternativas.forEach((alt) => {
+        if (!LETRAS.includes(alt.letra)) return;
+        $(`#alt-${alt.letra}`, area).value = alt.texto || "";
+        if (alt.imagem) seletoresAlt[alt.letra].adicionar(alt.imagem);
+      });
+      const radio = item.gabarito ? $(`#gab-${item.gabarito}`, area) : null;
+      if (radio) radio.checked = true;
+    } else {
+      $("#q-gabarito-disc", area).value = item.gabarito || "";
+    }
+
+    if (item.apoio) {
+      const idExistente = info.apoios[item.apoio.chave];
+      if (idExistente) {
+        await carregarApoios(idExistente);
+      } else {
+        await carregarApoios(NOVO_APOIO);
+        $("#ap-titulo", area).value = item.apoio.titulo || "";
+        $("#ap-fonte", area).value = item.apoio.fonte || "";
+        $("#ap-texto", area).value = item.apoio.texto || "";
+        item.apoio.imagens.forEach((img) => seletorApoio.adicionar(img));
+      }
+    } else {
+      await carregarApoios("");
+    }
+
+    atualizarModo();
+    agendarPrevia();
+    window.scrollTo({ top: 0 });
+  }
+
   // ----- Eventos -----
   selSegmento.addEventListener("change", () => {
     sincronizarSegmento();
@@ -653,11 +739,21 @@ export function iniciarQuestoes(ctx) {
   [seletorEnunciado, seletorApoio, ...Object.values(seletoresAlt)].forEach((s) => s.onChange(agendarPrevia));
 
   $("#q-limpar", area).addEventListener("click", () => {
+    if (importacaoAtual) {
+      carregarImportada(importacaoAtual.item, importacaoAtual.info);
+      return;
+    }
     limparTudo();
     voltarParaNovo();
   });
 
+  $("#q-pular", area).addEventListener("click", () => finalizarImportacao("pulada"));
+
   $("#q-cancelar-edicao", area).addEventListener("click", () => {
+    if (importacaoAtual) {
+      finalizarImportacao("parada");
+      return;
+    }
     limparTudo();
     voltarParaNovo();
     location.hash = "#banco";
@@ -784,7 +880,9 @@ export function iniciarQuestoes(ctx) {
         responsavel: estado.perfil.nome,
         statusValidacao: "pendente",
         arquivada: false,
-        origem: "manual",
+        origem: importacaoAtual ? "importada" : "manual",
+        importadaDe: importacaoAtual ? importacaoAtual.info.nomeArquivo : null,
+        gabaritoSugeridoPorIA: Boolean(importacaoAtual && importacaoAtual.item.gabaritoOrigem === "ia"),
         derivadaDeId: modo === "versao" && alvo ? alvo.id : null,
         adaptacao: adaptacaoAtual ? adaptacaoAtual.tipo : null,
         adaptacaoSuportesVisuais: adaptacaoAtual ? adaptacaoAtual.suportesVisuais || [] : [],
@@ -797,6 +895,7 @@ export function iniciarQuestoes(ctx) {
         questaoId: ref.id,
         derivadaDeId: modo === "versao" && alvo ? alvo.id : null,
         adaptacao: adaptacaoAtual ? adaptacaoAtual.tipo : null,
+        origem: importacaoAtual ? "importada" : "manual",
         segmento: d.segmento,
         ano: d.ano,
         disciplina: d.disciplina,
@@ -808,6 +907,14 @@ export function iniciarQuestoes(ctx) {
       atualizarContador();
       ctx.aviso("Questão salva. Aguarda validação do Supervisor.");
       if (typeof ctx.aoSalvar === "function") ctx.aoSalvar();
+
+      if (importacaoAtual) {
+        if (importacaoAtual.item.apoio && textoApoioId) {
+          importacaoAtual.info.apoios[importacaoAtual.item.apoio.chave] = textoApoioId;
+        }
+        finalizarImportacao("salva");
+        return;
+      }
 
       if (modo === "versao") {
         limparTudo();
@@ -833,5 +940,5 @@ export function iniciarQuestoes(ctx) {
   limparTudo();
   atualizarModo();
 
-  return { editar, versao, versaoAdaptada };
+  return { editar, versao, versaoAdaptada, carregarImportada };
 }
