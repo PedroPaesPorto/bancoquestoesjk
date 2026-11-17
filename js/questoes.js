@@ -1,9 +1,12 @@
 import {
-  addDoc, collection, doc, updateDoc, serverTimestamp
+  addDoc, collection, doc, updateDoc, serverTimestamp, getDocs, query, where, limit
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { SEGMENTOS, BIMESTRES, TIPOS, DIFICULDADES, LETRAS } from "./curriculo.js";
 import { $, el } from "./util.js";
-import { desenharQuestao } from "./rico.js";
+import { desenharQuestao, contarFormulasInvalidas } from "./rico.js";
+import { normalizarFormulas } from "./formulas.js";
+import { similaridade } from "./similaridade.js";
+import { perguntar } from "./dialogo.js";
 import {
   criarSeletorImagens, persistirImagens, obterImagem, obterApoio, listarApoios, guardarApoio
 } from "./midia.js";
@@ -333,6 +336,7 @@ export function iniciarQuestoes(ctx) {
       if (item.gabaritoOrigem === "ia") avisos.push("O gabarito foi sugerido pela IA: confira.");
       if (item.gabaritoOrigem === "nenhum") avisos.push("Não encontrei o gabarito: marque a resposta correta.");
       if (item.cortada) avisos.push("A questão pode estar incompleta, pois passa de uma página.");
+      if (item.formulasComErro > 0) avisos.push(`${item.formulasComErro} fórmula(s) com erro de leitura: confira o texto.`);
       if (item.figurasSemRecorte > 0) avisos.push(`${item.figurasSemRecorte} figura(s) não foram recortadas: adicione a imagem à mão.`);
       if (item.observacao) avisos.push(item.observacao);
       textos.titulo = `Importar questão ${info.posicao} de ${info.total}`;
@@ -413,8 +417,8 @@ export function iniciarQuestoes(ctx) {
       habilidade: $("#q-habilidade", area).value.trim().toUpperCase(),
       tipo: selTipo.value,
       dificuldade: $("#q-dificuldade", area).value,
-      enunciado: $("#q-enunciado", area).value.trim(),
-      justificativa: $("#q-justificativa", area).value.trim()
+      enunciado: normalizarFormulas($("#q-enunciado", area).value.trim()),
+      justificativa: normalizarFormulas($("#q-justificativa", area).value.trim())
     };
   }
 
@@ -441,14 +445,14 @@ export function iniciarQuestoes(ctx) {
       const marcada = $('input[name="gabarito-mc"]:checked', area);
       dados.gabarito = marcada ? marcada.value : "";
       LETRAS.forEach((letra) => {
-        const texto = $(`#alt-${letra}`, area).value.trim();
+        const texto = normalizarFormulas($(`#alt-${letra}`, area).value.trim());
         const item = seletoresAlt[letra].getItens()[0];
         if (texto || item) {
           dados.alternativas.push({ letra, texto, imagem: item ? paraImagem(item) : null });
         }
       });
     } else {
-      dados.gabarito = $("#q-gabarito-disc", area).value.trim();
+      dados.gabarito = normalizarFormulas($("#q-gabarito-disc", area).value.trim());
     }
 
     const idApoio = selApoio.value;
@@ -456,7 +460,7 @@ export function iniciarQuestoes(ctx) {
       dados.apoio = {
         titulo: $("#ap-titulo", area).value.trim(),
         fonte: $("#ap-fonte", area).value.trim(),
-        texto: $("#ap-texto", area).value,
+        texto: normalizarFormulas($("#ap-texto", area).value),
         imagens: seletorApoio.getItens().map(paraImagem)
       };
     } else if (idApoio) {
@@ -480,6 +484,14 @@ export function iniciarQuestoes(ctx) {
       return;
     }
     desenharQuestao(destino, dados);
+
+    const textos = [dados.enunciado, dados.justificativa, dados.apoio ? dados.apoio.texto : "", ...dados.alternativas.map((a) => a.texto)];
+    if (dados.tipo === "discursiva") textos.push(dados.gabarito);
+    const invalidas = textos.reduce((soma, t) => soma + contarFormulasInvalidas(t), 0);
+    if (invalidas > 0) {
+      destino.prepend(el("p", "mb-3 rounded-lg bg-[#FBE9E4] p-3 text-sm font-bold text-alerta",
+        `${invalidas} fórmula(s) com erro. Elas aparecem em vermelho abaixo e precisam ser corrigidas antes de salvar.`));
+    }
   }
 
   function agendarPrevia() {
@@ -489,7 +501,7 @@ export function iniciarQuestoes(ctx) {
 
   // ----- Validação -----
   // Devolve { erro, campo } se algo estiver errado, ou { dados } se estiver tudo certo.
-  function validar() {
+  function validarBasico() {
     const d = lerFormulario();
 
     if (!d.segmento) return { erro: "Escolha o segmento.", campo: selSegmento };
@@ -518,16 +530,22 @@ export function iniciarQuestoes(ctx) {
     if (d.tipo === "multipla_escolha") {
       const alternativas = [];
       for (const letra of LETRAS) {
-        const texto = $(`#alt-${letra}`, area).value.trim();
+        const texto = normalizarFormulas($(`#alt-${letra}`, area).value.trim());
         const item = seletoresAlt[letra].getItens()[0] || null;
         const erroImagem = seletoresAlt[letra].validar();
         if (erroImagem) return { erro: `Alternativa ${letra}: ${erroImagem}` };
         if (texto || item) alternativas.push({ letra, texto, item });
       }
 
-      for (const letra of ["A", "B", "C", "D"]) {
-        if (!alternativas.some((alt) => alt.letra === letra)) {
-          return { erro: `Preencha a alternativa ${letra} com texto ou imagem.`, campo: $(`#alt-${letra}`, area) };
+      if (alternativas.length < 2) {
+        return { erro: "Preencha pelo menos as alternativas A e B, com texto ou imagem.", campo: $("#alt-A", area) };
+      }
+      for (let i = 0; i < alternativas.length; i++) {
+        if (alternativas[i].letra !== LETRAS[i]) {
+          return {
+            erro: `Preencha a alternativa ${LETRAS[i]} antes da ${alternativas[i].letra}, ou apague a ${alternativas[i].letra}.`,
+            campo: $(`#alt-${LETRAS[i]}`, area)
+          };
         }
       }
 
@@ -540,9 +558,54 @@ export function iniciarQuestoes(ctx) {
       return { dados: { ...d, alternativas, gabarito: marcada.value } };
     }
 
-    const esperada = $("#q-gabarito-disc", area).value.trim();
+    const esperada = normalizarFormulas($("#q-gabarito-disc", area).value.trim());
     if (esperada.length < 5) return { erro: "Descreva a resposta esperada.", campo: $("#q-gabarito-disc", area) };
     return { dados: { ...d, alternativas: [], gabarito: esperada } };
+  }
+
+  // Confere também se todas as fórmulas são válidas.
+  function validar() {
+    const resultado = validarBasico();
+    if (resultado.erro) return resultado;
+    const d = resultado.dados;
+
+    const campos = [["enunciado", d.enunciado], ["justificativa", d.justificativa]];
+    if (d.tipo === "discursiva") campos.push(["resposta esperada", d.gabarito]);
+    d.alternativas.forEach((alt) => campos.push([`alternativa ${alt.letra}`, alt.texto]));
+    if (selApoio.value === NOVO_APOIO) campos.push(["texto de apoio", normalizarFormulas($("#ap-texto", area).value)]);
+
+    for (const [rotulo, texto] of campos) {
+      if (contarFormulasInvalidas(texto) > 0) {
+        return { erro: `Há uma fórmula com erro no campo ${rotulo}. Ela aparece em vermelho na prévia. Corrija e tente de novo.` };
+      }
+    }
+    return resultado;
+  }
+
+  // ----- Questões parecidas (evita repetir a mesma questão no banco) -----
+  const cacheParecidas = new Map(); // "segmento|disciplina" -> { quando, lista }
+
+  async function listaDaDisciplina(d) {
+    const chave = `${d.segmento}|${d.disciplina}`;
+    const guardado = cacheParecidas.get(chave);
+    if (guardado && Date.now() - guardado.quando < 10 * 60 * 1000) return guardado.lista;
+    const snap = await getDocs(query(collection(ctx.db, "questoes"), where("disciplina", "==", d.disciplina), limit(500)));
+    const lista = snap.docs
+      .map((x) => ({ id: x.id, ...x.data() }))
+      .filter((q) => q.segmento === d.segmento && !q.arquivada);
+    cacheParecidas.set(chave, { quando: Date.now(), lista });
+    return lista;
+  }
+
+  async function buscarParecida(d) {
+    try {
+      const lista = await listaDaDisciplina(d);
+      const ignorar = alvo ? alvo.id : null;
+      return lista.find((q) => q.id !== ignorar && q.ano === d.ano && similaridade(q.enunciado, d.enunciado) >= 0.85) || null;
+    } catch (e) {
+      console.warn("Não foi possível procurar questões parecidas:", e);
+      return null;
+    }
   }
 
   // ----- Limpeza -----
@@ -736,6 +799,12 @@ export function iniciarQuestoes(ctx) {
 
   form.addEventListener("input", agendarPrevia);
   form.addEventListener("change", agendarPrevia);
+  // Enter dentro de um campo de texto não deve salvar a questão sem querer.
+  form.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" && ev.target.tagName === "INPUT" && ev.target.type !== "submit" && ev.target.type !== "button") {
+      ev.preventDefault();
+    }
+  });
   [seletorEnunciado, seletorApoio, ...Object.values(seletoresAlt)].forEach((s) => s.onChange(agendarPrevia));
 
   $("#q-limpar", area).addEventListener("click", () => {
@@ -778,6 +847,20 @@ export function iniciarQuestoes(ctx) {
 
     const d = resultado.dados;
     const uid = estado.usuario.uid;
+
+    if (modo !== "editar" && !(modo === "versao" && adaptacaoAtual)) {
+      const parecida = await buscarParecida(d);
+      if (parecida) {
+        const situacao = { aprovada: "Banco Oficial", pendente: "aguardando validação", rejeitada: "devolvida" }[parecida.statusValidacao] || "";
+        const resposta = await perguntar({
+          titulo: "Já existe uma questão parecida",
+          texto: `“${parecida.assunto}”, de ${parecida.criadoPor || "autor desconhecido"} (${situacao}), tem um enunciado quase igual a este. Salvar mesmo assim cria uma questão repetida no banco.`,
+          rotuloOk: "Salvar mesmo assim"
+        });
+        if (!resposta.ok) return;
+      }
+    }
+
     botaoSalvar.disabled = true;
     botaoSalvar.textContent = "Salvando…";
 
@@ -798,7 +881,7 @@ export function iniciarQuestoes(ctx) {
         const dadosApoio = {
           titulo: $("#ap-titulo", area).value.trim(),
           fonte: $("#ap-fonte", area).value.trim(),
-          texto: $("#ap-texto", area).value.trim(),
+          texto: normalizarFormulas($("#ap-texto", area).value.trim()),
           imagens: idsApoio,
           segmento: d.segmento,
           ano: d.ano,
@@ -902,6 +985,9 @@ export function iniciarQuestoes(ctx) {
         bimestre: d.bimestre,
         tipo: d.tipo
       });
+
+      const guardado = cacheParecidas.get(`${d.segmento}|${d.disciplina}`);
+      if (guardado) guardado.lista.push({ id: ref.id, ...campos, criadoPor: estado.perfil.nome, statusValidacao: "pendente" });
 
       salvasNaSessao += 1;
       atualizarContador();
