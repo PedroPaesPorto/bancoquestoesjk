@@ -7,6 +7,7 @@ export async function chamarIA(ctx, rota, corpo) {
     throw new Error("A IA ainda não foi configurada. Preencha o endereço em js/ia-config.js.");
   }
 
+  if (typeof ctx.manterSessao === "function") ctx.manterSessao();
   const token = await ctx.obterToken();
   const controle = new AbortController();
   const limite = setTimeout(() => controle.abort(), 85000);
@@ -31,6 +32,19 @@ export async function chamarIA(ctx, rota, corpo) {
     dados = await resposta.json();
   } catch (e) {
     dados = null;
+  }
+
+  if (!dados && !resposta.ok) {
+    // O Vercel responde em texto (não em JSON) quando ele mesmo interrompe o pedido.
+    const mensagens = {
+      404: "A função da IA não foi encontrada. Confira o endereço em js/ia-config.js e se o deploy no Vercel terminou.",
+      413: "Os arquivos ficaram grandes demais para enviar de uma vez. Use menos páginas ou ative a opção de uma página por vez.",
+      502: "A IA ficou fora do ar por um instante. Tente de novo.",
+      504: "A leitura demorou demais. Tente de novo; se repetir, ative a opção de uma página por vez."
+    };
+    const erro = new Error(mensagens[resposta.status] || `A IA não respondeu (código ${resposta.status}).`);
+    erro.status = resposta.status;
+    throw erro;
   }
 
   if (!resposta.ok || !dados || dados.ok === false) {
