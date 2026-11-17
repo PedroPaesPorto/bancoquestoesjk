@@ -1,11 +1,12 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword,
-  createUserWithEmailAndPassword, updateProfile, signOut, sendPasswordResetEmail
+  createUserWithEmailAndPassword, updateProfile, signOut, sendPasswordResetEmail,
+  setPersistence, browserSessionPersistence
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
   getFirestore, doc, getDoc, setDoc, addDoc, collection,
-  serverTimestamp, getCountFromServer, query, where
+  serverTimestamp, getCountFromServer, getDocs, query, where
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { firebaseConfig, escola, configurado } from "./firebase-config.js";
 import { iniciarQuestoes } from "./questoes.js";
@@ -14,7 +15,9 @@ import { iniciarEquipe } from "./equipe.js";
 import { iniciarProvas } from "./provas.js";
 import { iniciarAdaptar } from "./adaptar.js";
 import { iniciarImportar } from "./importar.js";
+import { iniciarAuditoria } from "./auditoria.js";
 import { $, $$, rotuloCargo } from "./util.js";
+import { criarGuardaDeSessao, MANTER_LOGIN_AO_FECHAR } from "./sessao.js";
 
 // ---------- Utilidades ----------
 const ERROS_AUTH = {
@@ -61,6 +64,82 @@ let equipe = null;
 let provas = null;
 let adaptar = null;
 let importar = null;
+let auditoria = null;
+
+// ---------- Sessão ----------
+// Encerra a sessão depois de um tempo sem atividade (ajuste em js/sessao.js).
+const guarda = criarGuardaDeSessao({ aoExpirar: () => sairDoSistema("sessao_expirada") });
+
+// Sai e recarrega a página: assim nada do que a pessoa estava vendo (questões, provas,
+// rascunhos, imagens) fica na memória nem na tela para quem usar o computador depois.
+async function sairDoSistema(motivo) {
+  guarda.parar();
+  pararVerificacoes();
+  try {
+    if (motivo) await registrarAuditoria(motivo);
+  } catch (e) {
+    console.warn(e);
+  }
+  if (motivo === "sessao_expirada") {
+    sessionStorage.setItem("mensagemLogin", "Sua sessão foi encerrada por inatividade. Entre de novo para continuar.");
+  }
+  sessionStorage.removeItem("loginRegistrado");
+  try {
+    await signOut(auth);
+  } catch (e) {
+    console.warn(e);
+  }
+  location.hash = "";
+  location.reload();
+}
+
+// Confere de tempos em tempos se a conta continua ativa e com o mesmo cargo.
+// Assim, quem foi desativado pela coordenação perde o acesso sem precisar fechar a página.
+let temporizadorConta = null;
+let ultimaVerificacao = 0;
+
+async function verificarConta() {
+  if (!estado.usuario || !estado.perfil || !db) return;
+  ultimaVerificacao = Date.now();
+  try {
+    const snap = await getDoc(doc(db, "users", estado.usuario.uid));
+    if (!snap.exists()) return;
+    const novo = snap.data();
+    if (novo.ativo !== true) {
+      estado.perfil = novo;
+      guarda.parar();
+      pararVerificacoes();
+      mostrarPendente();
+      aviso("Sua conta foi desativada pela coordenação.", "erro");
+      return;
+    }
+    const mudouCargo = novo.cargo !== estado.perfil.cargo;
+    estado.perfil = novo;
+    if (mudouCargo) {
+      mostrarApp();
+      aviso("Seu cargo foi alterado pela coordenação.");
+    }
+  } catch (e) {
+    console.warn("Não foi possível conferir a conta agora:", e);
+  }
+}
+
+const aoVoltarParaAba = () => {
+  if (!document.hidden && Date.now() - ultimaVerificacao > 60 * 1000) verificarConta();
+};
+
+function iniciarVerificacoes() {
+  if (temporizadorConta) return;
+  ultimaVerificacao = Date.now();
+  temporizadorConta = setInterval(verificarConta, 5 * 60 * 1000);
+  document.addEventListener("visibilitychange", aoVoltarParaAba);
+}
+
+function pararVerificacoes() {
+  if (temporizadorConta) clearInterval(temporizadorConta);
+  temporizadorConta = null;
+  document.removeEventListener("visibilitychange", aoVoltarParaAba);
+}
 
 // ---------- Auditoria ----------
 // Só contas ativas conseguem gravar (as regras do Firestore exigem).
@@ -86,11 +165,14 @@ function esconderTelas() {
 }
 
 function mostrarLogin() {
+  guarda.parar();
+  pararVerificacoes();
   esconderTelas();
   $("#tela-login").classList.remove("hidden");
 }
 
 function mostrarPendente() {
+  guarda.parar();
   esconderTelas();
   $("#tela-pendente").classList.remove("hidden");
   const desativada = Boolean(estado.perfil && estado.perfil.desativadoEm);
@@ -137,7 +219,11 @@ function mostrarApp() {
   carregarResumo();
   if (banco && location.hash === "#banco") banco.carregar();
   if (equipe && location.hash === "#equipe") equipe.carregar();
+  if (auditoria && location.hash === "#auditoria") auditoria.carregar();
   if (provas && location.hash === "#provas") provas.carregarSalvas();
+
+  guarda.iniciar();
+  iniciarVerificacoes();
 }
 
 async function carregarResumo() {
@@ -165,8 +251,8 @@ async function carregarResumo() {
   aviso_contas.classList.add("hidden");
   if (estado.perfil && estado.perfil.cargo === "supervisor") {
     try {
-      const novas = await getCountFromServer(query(collection(db, "users"), where("ativo", "==", false)));
-      const quantidade = novas.data().count;
+      const inativas = await getDocs(query(collection(db, "users"), where("ativo", "==", false)));
+      const quantidade = inativas.docs.filter((d) => !d.data().desativadoEm).length;
       if (quantidade > 0) {
         $("#aviso-contas-texto").textContent = quantidade === 1
           ? "1 conta aguarda liberação."
@@ -206,7 +292,10 @@ async function entrar(user) {
     return;
   }
   mostrarApp();
-  await registrarAuditoria("login");
+  if (sessionStorage.getItem("loginRegistrado") !== user.uid) {
+    sessionStorage.setItem("loginRegistrado", user.uid);
+    await registrarAuditoria("login");
+  }
 }
 
 // ---------- Formulários ----------
@@ -304,12 +393,7 @@ function configurarFormularios() {
     }
   });
 
-  $$("[data-sair]").forEach((el) =>
-    el.addEventListener("click", async () => {
-      await registrarAuditoria("logout");
-      await signOut(auth);
-    })
-  );
+  $$("[data-sair]").forEach((el) => el.addEventListener("click", () => sairDoSistema("logout")));
 }
 
 // ---------- Inicialização ----------
@@ -323,6 +407,14 @@ function iniciar() {
     return;
   }
 
+  const mensagemLogin = sessionStorage.getItem("mensagemLogin");
+  if (mensagemLogin) {
+    sessionStorage.removeItem("mensagemLogin");
+    const caixa = $("#aviso-sessao");
+    caixa.textContent = mensagemLogin;
+    caixa.classList.remove("hidden");
+  }
+
   const app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
@@ -334,7 +426,8 @@ function iniciar() {
     registrarAuditoria,
     aviso,
     aoAlterar: carregarResumo,
-    obterToken: () => auth.currentUser.getIdToken()
+    obterToken: () => auth.currentUser.getIdToken(),
+    manterSessao: () => guarda.ping()
   };
 
   const questoes = iniciarQuestoes({ ...base, aoSalvar: carregarResumo });
@@ -347,6 +440,10 @@ function iniciar() {
   });
   banco = iniciarBanco({
     ...base,
+    aoHistorico: (questao) => {
+      auditoria.filtrarPorQuestao(questao);
+      location.hash = "#auditoria";
+    },
     aoAdaptar: async (questao) => {
       await adaptar.abrir(questao);
       location.hash = "#acessibilidade";
@@ -367,9 +464,15 @@ function iniciar() {
     }
   });
   equipe = iniciarEquipe(base);
+  auditoria = iniciarAuditoria(base);
   provas = iniciarProvas(base);
 
-  onAuthStateChanged(auth, async (user) => {
+  // Por segurança, o login vale só enquanto o navegador estiver aberto (veja MANTER_LOGIN_AO_FECHAR em js/sessao.js).
+  const persistenciaPronta = MANTER_LOGIN_AO_FECHAR
+    ? Promise.resolve()
+    : setPersistence(auth, browserSessionPersistence).catch((e) => console.warn("Persistência de login:", e));
+
+  persistenciaPronta.then(() => onAuthStateChanged(auth, async (user) => {
     if (estado.cadastrando) return; // o fluxo de cadastro conclui sozinho
     if (!user) {
       estado.usuario = null;
@@ -379,6 +482,7 @@ function iniciar() {
       if (provas) provas.limpar();
       if (adaptar) adaptar.limpar();
       if (importar) importar.limpar();
+      if (auditoria) auditoria.limpar();
       mostrarLogin();
       return;
     }
@@ -389,7 +493,7 @@ function iniciar() {
       aviso("Não foi possível carregar seu perfil. Confira as regras do Firestore.", "erro");
       await signOut(auth);
     }
-  });
+  }));
 }
 
 iniciar();
