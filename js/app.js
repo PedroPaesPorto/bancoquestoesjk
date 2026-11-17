@@ -16,6 +16,7 @@ import { iniciarProvas } from "./provas.js";
 import { iniciarAdaptar } from "./adaptar.js";
 import { iniciarImportar } from "./importar.js";
 import { iniciarAuditoria } from "./auditoria.js";
+import { garantirKatex } from "./katex-loader.js";
 import { $, $$, rotuloCargo } from "./util.js";
 import { criarGuardaDeSessao, MANTER_LOGIN_AO_FECHAR } from "./sessao.js";
 
@@ -472,7 +473,8 @@ function iniciar() {
     ? Promise.resolve()
     : setPersistence(auth, browserSessionPersistence).catch((e) => console.warn("Persistência de login:", e));
 
-  persistenciaPronta.then(() => onAuthStateChanged(auth, async (user) => {
+  // Espera o login ser preparado e o leitor de fórmulas carregar (pasta vendor/katex ou internet).
+  Promise.all([persistenciaPronta, garantirKatex()]).then(() => onAuthStateChanged(auth, async (user) => {
     if (estado.cadastrando) return; // o fluxo de cadastro conclui sozinho
     if (!user) {
       estado.usuario = null;
