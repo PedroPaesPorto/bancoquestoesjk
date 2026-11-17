@@ -3,16 +3,18 @@ import { $, el } from "./util.js";
 import { chamarIA } from "./ia.js";
 import { iaConfigurada } from "./ia-config.js";
 import { abrirImagem, abrirImagemDeUrl, reduzirFonte, reduzirDataUrl } from "./midia.js";
+import { normalizarFormulas } from "./formulas.js";
+import { contarFormulasInvalidas } from "./rico.js";
 
 const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 const PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 const MAMMOTH = "https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js";
 
 const MAX_PAGINAS = 30;
-const LADO_PAGINA = 1800;
+const PRECISAO_NORMAL = { lado: 1800, maxJpeg: 1400000 };
+const PRECISAO_ALTA = { lado: 2400, maxJpeg: 2000000 };
 const PAGINAS_POR_LOTE = 2;
 const TAMANHO_MAX_LOTE = 3300000; // caracteres em base64; o Vercel aceita pedidos de até 4,5 MB
-const TAMANHO_MAX_PAGINA = 1400000;
 const CARACTERES_POR_BLOCO = 5000;
 const IMAGENS_POR_BLOCO = 5;
 const MAX_IMAGENS_DOCX = 40;
@@ -35,13 +37,13 @@ const dadosBase64 = (dataUrl) => dataUrl.slice(dataUrl.indexOf(",") + 1);
 const mimeDe = (dataUrl) => dataUrl.slice(5, dataUrl.indexOf(";"));
 
 // ---------- Preparação dos arquivos ----------
-function paginaDeCanvas(canvas, rotulo) {
+function paginaDeCanvas(canvas, rotulo, maxJpeg) {
   let fonte = canvas;
   let qualidade = 0.8;
   let jpeg = "";
   for (let i = 0; i < 10; i++) {
     jpeg = fonte.toDataURL("image/jpeg", qualidade);
-    if (jpeg.length <= TAMANHO_MAX_PAGINA) break;
+    if (jpeg.length <= maxJpeg) break;
     if (qualidade > 0.5) {
       qualidade -= 0.1;
     } else {
@@ -49,15 +51,21 @@ function paginaDeCanvas(canvas, rotulo) {
       menor.width = Math.round(fonte.width * 0.85);
       menor.height = Math.round(fonte.height * 0.85);
       menor.getContext("2d").drawImage(fonte, 0, 0, menor.width, menor.height);
+      if (fonte !== canvas) { fonte.width = 0; fonte.height = 0; }
       fonte = menor;
     }
   }
-  return { canvas, jpeg, rotulo };
+  // Só o JPEG fica guardado. Os canvases são liberados para não esgotar a memória em provas longas.
+  const resultado = { jpeg, largura: fonte.width, altura: fonte.height, rotulo, img: null };
+  if (fonte !== canvas) { fonte.width = 0; fonte.height = 0; }
+  canvas.width = 0;
+  canvas.height = 0;
+  return resultado;
 }
 
-async function paginaDeImagem(arquivo) {
+async function paginaDeImagem(arquivo, precisao) {
   const img = await abrirImagem(arquivo);
-  const escala = Math.min(1, LADO_PAGINA / Math.max(img.naturalWidth, img.naturalHeight));
+  const escala = Math.min(1, precisao.lado / Math.max(img.naturalWidth, img.naturalHeight));
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(img.naturalWidth * escala));
   canvas.height = Math.max(1, Math.round(img.naturalHeight * escala));
@@ -65,21 +73,34 @@ async function paginaDeImagem(arquivo) {
   c.fillStyle = "#ffffff";
   c.fillRect(0, 0, canvas.width, canvas.height);
   c.drawImage(img, 0, 0, canvas.width, canvas.height);
-  return paginaDeCanvas(canvas, arquivo.name);
+  return paginaDeCanvas(canvas, arquivo.name, precisao.maxJpeg);
 }
 
-async function paginasDePdf(arquivo, limite, aoProgresso) {
+async function paginasDePdf(arquivo, limite, aoProgresso, precisao) {
   await carregarScript(PDFJS);
   const pdfjs = window.pdfjsLib;
   pdfjs.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
-  const pdf = await pdfjs.getDocument({ data: new Uint8Array(await arquivo.arrayBuffer()) }).promise;
+
+  let pdf;
+  try {
+    pdf = await pdfjs.getDocument({ data: new Uint8Array(await arquivo.arrayBuffer()) }).promise;
+  } catch (e) {
+    if (e && e.name === "PasswordException") {
+      throw new Error("Este PDF está protegido por senha. Salve uma cópia sem senha e envie de novo.");
+    }
+    if (e && e.name === "InvalidPDFException") {
+      throw new Error("O arquivo não parece ser um PDF válido.");
+    }
+    throw e;
+  }
+
   const total = Math.min(pdf.numPages, limite);
   const paginas = [];
   for (let n = 1; n <= total; n++) {
     aoProgresso(`Lendo ${arquivo.name}: página ${n} de ${total}…`);
     const pagina = await pdf.getPage(n);
     const base = pagina.getViewport({ scale: 1 });
-    const escala = LADO_PAGINA / Math.max(base.width, base.height);
+    const escala = precisao.lado / Math.max(base.width, base.height);
     const viewport = pagina.getViewport({ scale: escala });
     const canvas = document.createElement("canvas");
     canvas.width = Math.round(viewport.width);
@@ -88,9 +109,12 @@ async function paginasDePdf(arquivo, limite, aoProgresso) {
     c.fillStyle = "#ffffff";
     c.fillRect(0, 0, canvas.width, canvas.height);
     await pagina.render({ canvasContext: c, viewport }).promise;
-    paginas.push(paginaDeCanvas(canvas, `${arquivo.name} (página ${n})`));
+    paginas.push(paginaDeCanvas(canvas, `${arquivo.name} (página ${n})`, precisao.maxJpeg));
+    pagina.cleanup();
   }
-  return { paginas, truncado: pdf.numPages > limite };
+  const truncado = pdf.numPages > limite;
+  pdf.destroy();
+  return { paginas, truncado };
 }
 
 // Word: extrai o texto e as imagens. Equações do editor do Word não são lidas.
@@ -191,22 +215,31 @@ async function blocosDeDocx(arquivo, aoProgresso) {
 }
 
 // ---------- Recorte de figuras ----------
-async function recortar(canvas, caixa, descricao) {
+async function recortar(pagina, caixa, descricao) {
+  if (!pagina.img) pagina.img = await abrirImagemDeUrl(pagina.jpeg);
+  const img = pagina.img;
+  const larguraTotal = img.naturalWidth;
+  const alturaTotal = img.naturalHeight;
   const [ymin, xmin, ymax, xmax] = caixa;
   const folga = 15; // 1,5% de margem em cada lado
-  const x0 = Math.max(0, Math.floor(((xmin - folga) / 1000) * canvas.width));
-  const y0 = Math.max(0, Math.floor(((ymin - folga) / 1000) * canvas.height));
-  const x1 = Math.min(canvas.width, Math.ceil(((xmax + folga) / 1000) * canvas.width));
-  const y1 = Math.min(canvas.height, Math.ceil(((ymax + folga) / 1000) * canvas.height));
+  const x0 = Math.max(0, Math.floor(((xmin - folga) / 1000) * larguraTotal));
+  const y0 = Math.max(0, Math.floor(((ymin - folga) / 1000) * alturaTotal));
+  const x1 = Math.min(larguraTotal, Math.ceil(((xmax + folga) / 1000) * larguraTotal));
+  const y1 = Math.min(alturaTotal, Math.ceil(((ymax + folga) / 1000) * alturaTotal));
   const largura = Math.max(1, x1 - x0);
   const altura = Math.max(1, y1 - y0);
 
   const corte = document.createElement("canvas");
   corte.width = largura;
   corte.height = altura;
-  corte.getContext("2d").drawImage(canvas, x0, y0, largura, altura, 0, 0, largura, altura);
-  const reduzida = await reduzirFonte(corte, largura, altura);
-  return { ...reduzida, alt: descricao.length >= 5 ? descricao : "Figura da questão" };
+  corte.getContext("2d").drawImage(img, x0, y0, largura, altura, 0, 0, largura, altura);
+  try {
+    const reduzida = await reduzirFonte(corte, largura, altura);
+    return { ...reduzida, alt: descricao.length >= 5 ? descricao : "Figura da questão" };
+  } finally {
+    corte.width = 0;
+    corte.height = 0;
+  }
 }
 
 // ---------- Módulo ----------
@@ -219,6 +252,10 @@ export function iniciarImportar(ctx) {
   let fila = null;         // revisão em andamento
   let cancelado = false;
   let ocupado = false;
+  let ultimosArquivos = [];
+
+  // Avisa o guarda da sessão que há trabalho em andamento (a leitura pode demorar minutos).
+  const ping = () => { if (typeof ctx.manterSessao === "function") ctx.manterSessao(); };
 
   area.innerHTML = `
     <h1 class="text-2xl font-bold sm:text-3xl">Importar prova de arquivo</h1>
@@ -261,6 +298,12 @@ export function iniciarImportar(ctx) {
       <p id="im-status-arquivo" class="mt-3 hidden text-sm font-bold text-[#33475B]" aria-live="polite"></p>
       <p id="im-erro-arquivo" class="mt-3 hidden rounded-lg bg-[#FBE9E4] p-3 text-sm font-bold text-alerta" role="alert"></p>
       <ul id="im-paginas" class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4"></ul>
+      <label class="mt-4 flex items-start gap-3 font-bold">
+        <input id="im-alta" type="checkbox" class="mt-1 h-5 w-5 accent-[#0F6B6B]">
+        <span>Prova com muitas fórmulas ou letra pequena
+          <span class="block text-sm font-normal text-[#4B5C6B]">Lê uma página por vez e em resolução maior. É mais lento, mas erra menos em fórmulas, expoentes e índices.</span>
+        </span>
+      </label>
       <label class="mt-4 flex items-start gap-3 font-bold">
         <input id="im-gabarito" type="checkbox" class="mt-1 h-5 w-5 accent-[#0F6B6B]">
         <span>O arquivo já traz o gabarito (respostas)
@@ -330,6 +373,7 @@ export function iniciarImportar(ctx) {
   }
 
   function progresso(percentual, texto) {
+    ping();
     $("#im-progresso", area).classList.remove("hidden");
     $("#im-barra", area).style.width = `${Math.max(2, Math.min(100, percentual))}%`;
     $("#im-progresso-texto", area).textContent = texto;
@@ -371,6 +415,8 @@ export function iniciarImportar(ctx) {
   }
 
   async function lerArquivos(arquivos) {
+    ultimosArquivos = arquivos;
+    const precisao = $("#im-alta", area).checked ? PRECISAO_ALTA : PRECISAO_NORMAL;
     mostrar("#im-erro-arquivo", "");
     mostrar("#im-status-arquivo", "");
     fonte = null;
@@ -389,7 +435,7 @@ export function iniciarImportar(ctx) {
     }
 
     ocupado = true;
-    const aviso = (t) => mostrar("#im-status-arquivo", t);
+    const aviso = (t) => { ping(); mostrar("#im-status-arquivo", t); };
     try {
       if (docx.length) {
         aviso("Lendo o arquivo Word…");
@@ -402,12 +448,12 @@ export function iniciarImportar(ctx) {
           const restante = MAX_PAGINAS - paginas.length;
           if (restante <= 0) { truncado = true; break; }
           if (/\.pdf$/i.test(arquivo.name) || arquivo.type === "application/pdf") {
-            const r = await paginasDePdf(arquivo, restante, aviso);
+            const r = await paginasDePdf(arquivo, restante, aviso, precisao);
             paginas.push(...r.paginas);
             truncado = truncado || r.truncado;
           } else if (arquivo.type.startsWith("image/")) {
             aviso(`Preparando ${arquivo.name}…`);
-            paginas.push(await paginaDeImagem(arquivo));
+            paginas.push(await paginaDeImagem(arquivo, precisao));
           } else {
             throw new Error(`Não sei ler o arquivo ${arquivo.name}. Use PDF, Word (.docx) ou foto.`);
           }
@@ -429,11 +475,12 @@ export function iniciarImportar(ctx) {
   // ----- Leitura com IA -----
   function formarLotes() {
     if (fonte.tipo === "texto") return fonte.itens.map((bloco) => [bloco]);
+    const porLote = $("#im-alta", area).checked ? 1 : PAGINAS_POR_LOTE;
     const lotes = [];
     let atual = [];
     let tamanho = 0;
     fonte.itens.forEach((pagina) => {
-      if (atual.length && (atual.length >= PAGINAS_POR_LOTE || tamanho + pagina.jpeg.length > TAMANHO_MAX_LOTE)) {
+      if (atual.length && (atual.length >= porLote || tamanho + pagina.jpeg.length > TAMANHO_MAX_LOTE)) {
         lotes.push(atual);
         atual = [];
         tamanho = 0;
@@ -450,7 +497,7 @@ export function iniciarImportar(ctx) {
     try {
       if (fonte.tipo === "paginas") {
         const pagina = lote[figura.pagina];
-        return pagina ? await recortar(pagina.canvas, figura.caixa, figura.descricao) : null;
+        return pagina ? await recortar(pagina, figura.caixa, figura.descricao) : null;
       }
       const base = lote[0].imagens[figura.imagemRef];
       return base ? { ...base, alt: figura.descricao.length >= 5 ? figura.descricao : "Figura da questão" } : null;
@@ -473,7 +520,7 @@ export function iniciarImportar(ctx) {
         chave: `${indiceLote}:${apoio.id}`,
         titulo: apoio.titulo,
         fonte: apoio.fonte,
-        texto: apoio.texto,
+        texto: normalizarFormulas(apoio.texto),
         imagens,
         figurasSemRecorte: semRecorte
       });
@@ -494,18 +541,18 @@ export function iniciarImportar(ctx) {
           imagem = await figuraParaImagem(alt.figura, lote);
           if (!imagem) semRecorte++;
         }
-        alternativas.push({ letra: alt.letra, texto: alt.texto, imagem });
+        alternativas.push({ letra: alt.letra, texto: normalizarFormulas(alt.texto), imagem });
       }
-      itens.push({
+      const novoItem = {
         chave: `${indiceLote}-${n}`,
         numero: q.numero,
         tipo: q.tipo,
-        enunciado: q.enunciado,
+        enunciado: normalizarFormulas(q.enunciado),
         figurasEnunciado,
         alternativas,
-        gabarito: q.gabarito,
+        gabarito: q.tipo === "discursiva" ? normalizarFormulas(q.gabarito) : q.gabarito,
         gabaritoOrigem: q.gabaritoOrigem,
-        justificativa: q.justificativa,
+        justificativa: normalizarFormulas(q.justificativa),
         assunto: q.assunto,
         dificuldade: q.dificuldade,
         cortada: q.cortada,
@@ -513,7 +560,11 @@ export function iniciarImportar(ctx) {
         figurasSemRecorte: semRecorte,
         apoio: q.apoioId ? apoios.get(q.apoioId) || null : null,
         incluir: true
-      });
+      };
+      const textos = [novoItem.enunciado, novoItem.justificativa, novoItem.apoio ? novoItem.apoio.texto : "", ...novoItem.alternativas.map((a) => a.texto)];
+      if (novoItem.tipo === "discursiva") textos.push(novoItem.gabarito);
+      novoItem.formulasComErro = textos.reduce((soma, t) => soma + contarFormulasInvalidas(t), 0);
+      itens.push(novoItem);
     }
     return itens;
   }
@@ -549,6 +600,7 @@ export function iniciarImportar(ctx) {
     try {
       for (let i = 0; i < lotes.length; i++) {
         if (cancelado) break;
+        ping();
         progresso((i / lotes.length) * 100, `Lendo parte ${i + 1} de ${lotes.length}… cada parte leva de 15 a 60 segundos.`);
         const lote = lotes[i];
         const corpo = {
@@ -574,9 +626,10 @@ export function iniciarImportar(ctx) {
           const novos = await montarItens(resposta.resultado, lote, i);
           itensLidos.push(...novos);
           lidos++;
+          if (fonte.tipo === "paginas") lote.forEach((p) => { p.img = null; });
         } catch (e) {
           console.error(e);
-          const rotulo = fonte.tipo === "paginas" ? `páginas ${i * PAGINAS_POR_LOTE + 1} em diante` : `trecho ${i + 1}`;
+          const rotulo = fonte.tipo === "paginas" ? `parte ${i + 1}: ${lote.map((p) => p.rotulo).join(", ")}` : `trecho ${i + 1}`;
           falhas.push(`Não consegui ler (${rotulo}): ${e.message}`);
           if ([401, 403, 429].includes(e.status)) break;
         }
@@ -637,6 +690,7 @@ export function iniciarImportar(ctx) {
       if (item.gabaritoOrigem === "ia") selo("Gabarito sugerido pela IA", true);
       if (item.gabaritoOrigem === "nenhum") selo("Sem gabarito", true);
       if (item.cortada) selo("Pode estar incompleta", true);
+      if (item.formulasComErro > 0) selo(`${item.formulasComErro} fórmula(s) com erro de leitura`, true);
       if (item.figurasSemRecorte > 0) selo(`${item.figurasSemRecorte} figura(s) para adicionar à mão`, true);
       corpo.appendChild(selos);
       linha.appendChild(corpo);
@@ -705,6 +759,7 @@ export function iniciarImportar(ctx) {
     itensLidos = [];
     fila = null;
     cancelado = true;
+    ultimosArquivos = [];
     $("#im-paginas", area).replaceChildren();
     $("#im-lista", area).replaceChildren();
     $("#im-resultado", area).classList.add("hidden");
@@ -718,6 +773,7 @@ export function iniciarImportar(ctx) {
   selSegmento.addEventListener("change", sincronizarSegmento);
   $("#im-arquivo", area).addEventListener("change", (ev) => lerArquivos(Array.from(ev.target.files || [])));
   $("#im-ler", area).addEventListener("click", lerComIA);
+  $("#im-alta", area).addEventListener("change", () => { if (ultimosArquivos.length && !ocupado) lerArquivos(ultimosArquivos); });
   $("#im-cancelar", area).addEventListener("click", () => { cancelado = true; });
   $("#im-revisar", area).addEventListener("click", iniciarRevisao);
   $("#im-descartar", area).addEventListener("click", () => {
