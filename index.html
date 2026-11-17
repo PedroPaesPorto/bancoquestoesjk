@@ -5,10 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Banco de Questões Colaborativo e Inclusivo</title>
   <meta name="theme-color" content="#0F6B6B">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="same-origin">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.css">
+  <link rel="stylesheet" href="vendor/katex/katex.min.css">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -106,6 +108,7 @@
       <div class="w-full max-w-md">
         <h1 class="text-2xl sm:text-3xl font-bold leading-tight">Banco de Questões Colaborativo e Inclusivo</h1>
         <p class="mt-2 text-[#33475B]">Monte provas com os colegas e adapte cada questão para quem precisa.</p>
+        <p id="aviso-sessao" class="mt-4 hidden rounded-xl border-2 border-marca bg-[#FFF6DB] p-3 text-sm font-bold" role="status"></p>
 
         <div id="aviso-config" class="hidden mt-5 rounded-xl border-2 border-marca bg-[#FFF6DB] p-4 text-sm">
           <strong>Falta configurar o Firebase.</strong>
@@ -274,7 +277,7 @@
             <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 5 (pronto):</strong> geração de provas para impressão e PDF.</li>
             <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 6A (pronto):</strong> IA que adapta questões para TEA e para não leitores.</li>
             <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 6B (pronto):</strong> IA que importa provas por foto, PDF ou Word.</li>
-            <li class="rounded-xl bg-white p-3 border border-[#D5DDE4]"><strong>Passo 7:</strong> painel de auditoria.</li>
+            <li class="rounded-xl bg-petroleo-claro p-3"><strong>Passo 7 (pronto):</strong> painel de auditoria.</li>
           </ol>
         </section>
 
@@ -297,13 +300,7 @@
         <section data-view="equipe" id="area-equipe" class="hidden so-supervisor"></section>
 
         <!-- Auditoria (Supervisor) -->
-        <section data-view="auditoria" class="hidden so-supervisor">
-          <h1 class="text-2xl font-bold">Auditoria</h1>
-          <div class="mt-5 rounded-xl border border-dashed border-[#9FB0BE] bg-white p-6">
-            <p class="font-bold">O painel de auditoria entra no Passo 7.</p>
-            <p class="mt-1 text-[#33475B]">Os registros de login, questões, contas e backups já estão sendo gravados.</p>
-          </div>
-        </section>
+        <section data-view="auditoria" id="area-auditoria" class="hidden so-supervisor"></section>
 
       </div>
     </main>
@@ -321,8 +318,8 @@
 
   <div id="folha-impressao"></div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/contrib/mhchem.min.js"></script>
+  <script src="vendor/katex/katex.min.js"></script>
+  <script src="vendor/katex/contrib/mhchem.min.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>
