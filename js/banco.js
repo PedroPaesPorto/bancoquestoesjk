@@ -1,5 +1,5 @@
 import {
-  collection, getDocs, query, orderBy, limit, doc, updateDoc, deleteDoc, serverTimestamp
+  collection, getDocs, query, where, orderBy, limit, doc, updateDoc, deleteDoc, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { SEGMENTOS, BIMESTRES, TIPOS, DIFICULDADES } from "./curriculo.js";
 import { $, el, normalizar, formatarData, rotuloCargo } from "./util.js";
@@ -7,7 +7,8 @@ import { perguntar } from "./dialogo.js";
 import { renderRico, desenharQuestao } from "./rico.js";
 import { obterImagem, obterApoio } from "./midia.js";
 
-const LIMITE_CARREGADO = 300;
+const LIMITE_CARREGADO = 300;       // sem disciplina escolhida: as mais recentes
+const LIMITE_POR_DISCIPLINA = 500;  // com disciplina escolhida: todas até este limite
 const POR_PAGINA = 20;
 
 const STATUS = {
@@ -24,6 +25,7 @@ export function iniciarBanco(ctx) {
 
   let lista = [];
   let carregou = false;
+  let limiteAtingido = false;
   let visiveis = POR_PAGINA;
 
   const filtros = {
@@ -304,6 +306,7 @@ export function iniciarBanco(ctx) {
     if (podeMexer) {
       botao("Editar", "border-2 border-[#9FB0BE] text-[#33475B] hover:bg-giz", () => ctx.aoEditar(q));
     }
+    if (ehSupervisor) botao("Histórico", "border-2 border-[#9FB0BE] text-[#33475B] hover:bg-giz", () => ctx.aoHistorico(q));
     botao("Adaptar com IA", "border-2 border-petroleo text-petroleo hover:bg-petroleo-claro", () => ctx.aoAdaptar(q));
     botao("Criar versão", "border-2 border-[#9FB0BE] text-[#33475B] hover:bg-giz", () => ctx.aoVersao(q));
     if (ehSupervisor) {
@@ -328,7 +331,13 @@ export function iniciarBanco(ctx) {
     if (!carregou) return;
 
     const resultado = filtrar();
-    $("#b-contagem", area).textContent = `Mostrando ${Math.min(visiveis, resultado.length)} de ${resultado.length} questões (${lista.length} carregadas)`;
+    let contagem = `Mostrando ${Math.min(visiveis, resultado.length)} de ${resultado.length} questões (${lista.length} carregadas).`;
+    if (limiteAtingido) {
+      contagem += filtros.disciplina
+        ? ` Esta disciplina tem mais de ${LIMITE_POR_DISCIPLINA} questões; use os outros filtros para achar as que faltam.`
+        : ` O banco tem mais questões do que as ${LIMITE_CARREGADO} mais recentes mostradas aqui: escolha uma disciplina para ver todas.`;
+    }
+    $("#b-contagem", area).textContent = contagem;
 
     if (lista.length === 0) {
       const caixa = el("div", "rounded-xl border border-dashed border-[#9FB0BE] bg-white p-6");
@@ -373,8 +382,16 @@ export function iniciarBanco(ctx) {
     $("#b-mais", area).classList.add("hidden");
     mostrarMensagem("Carregando questões…");
     try {
-      const snap = await getDocs(query(collection(ctx.db, "questoes"), orderBy("criadoEm", "desc"), limit(LIMITE_CARREGADO)));
+      const porDisciplina = Boolean(filtros.disciplina);
+      const limite = porDisciplina ? LIMITE_POR_DISCIPLINA : LIMITE_CARREGADO;
+      const consulta = porDisciplina
+        ? query(collection(ctx.db, "questoes"), where("disciplina", "==", filtros.disciplina), limit(limite))
+        : query(collection(ctx.db, "questoes"), orderBy("criadoEm", "desc"), limit(limite));
+      const snap = await getDocs(consulta);
       lista = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const tempo = (q) => (q.criadoEm && typeof q.criadoEm.toDate === "function" ? q.criadoEm.toDate().getTime() : 0);
+      lista.sort((a, b) => tempo(b) - tempo(a));
+      limiteAtingido = snap.docs.length >= limite;
       carregou = true;
       visiveis = POR_PAGINA;
       desenhar();
@@ -515,12 +532,14 @@ export function iniciarBanco(ctx) {
 
   $("#b-busca", area).addEventListener("input", (ev) => { filtros.busca = ev.target.value; aoMudarFiltro(); });
   selSegmento.addEventListener("change", (ev) => {
+    const tinhaDisciplina = Boolean(filtros.disciplina);
     filtros.segmento = ev.target.value;
-    preencherAnoEDisciplina();
-    aoMudarFiltro();
+    preencherAnoEDisciplina(); // zera ano e disciplina
+    if (tinhaDisciplina) carregar(); // a lista carregada era só daquela disciplina
+    else aoMudarFiltro();
   });
   selAno.addEventListener("change", (ev) => { filtros.ano = ev.target.value; aoMudarFiltro(); });
-  selDisciplina.addEventListener("change", (ev) => { filtros.disciplina = ev.target.value; aoMudarFiltro(); });
+  selDisciplina.addEventListener("change", (ev) => { filtros.disciplina = ev.target.value; visiveis = POR_PAGINA; carregar(); });
   $("#b-bimestre", area).addEventListener("change", (ev) => { filtros.bimestre = ev.target.value; aoMudarFiltro(); });
   $("#b-tipo", area).addEventListener("change", (ev) => { filtros.tipo = ev.target.value; aoMudarFiltro(); });
   $("#b-dificuldade", area).addEventListener("change", (ev) => { filtros.dificuldade = ev.target.value; aoMudarFiltro(); });
@@ -530,6 +549,7 @@ export function iniciarBanco(ctx) {
   $("#b-arquivadas", area).addEventListener("change", (ev) => { filtros.arquivadas = ev.target.checked; aoMudarFiltro(); });
 
   $("#b-limpar-filtros", area).addEventListener("click", () => {
+    const tinhaDisciplina = Boolean(filtros.disciplina);
     Object.assign(filtros, {
       busca: "", segmento: "", ano: "", disciplina: "", bimestre: "",
       tipo: "", dificuldade: "", status: "", adaptacao: "", soMinhas: false, arquivadas: false
@@ -540,7 +560,8 @@ export function iniciarBanco(ctx) {
     ["#b-bimestre", "#b-tipo", "#b-dificuldade", "#b-status", "#b-adaptacao"].forEach((id) => { $(id, area).value = ""; });
     $("#b-minhas", area).checked = false;
     $("#b-arquivadas", area).checked = false;
-    aoMudarFiltro();
+    if (tinhaDisciplina) carregar();
+    else aoMudarFiltro();
   });
 
   $("#b-atualizar", area).addEventListener("click", carregar);
