@@ -1,4 +1,5 @@
 import { el } from "./util.js";
+import { extrairFormulas } from "./formulas.js";
 
 // Texto rico = texto comum + fórmulas.
 //   \( ... \)  fórmula no meio do texto
@@ -23,6 +24,20 @@ function desenharFormula(alvo, expressao, destaque, original) {
     }
   }
   alvo.textContent = original;
+}
+
+// Conta quantas fórmulas do texto o KaTeX não consegue interpretar.
+export function contarFormulasInvalidas(texto) {
+  if (!window.katex) return 0;
+  let invalidas = 0;
+  extrairFormulas(texto).forEach(({ expressao, destaque }) => {
+    try {
+      window.katex.renderToString(expressao, { displayMode: destaque, throwOnError: true, trust: false, strict: "ignore" });
+    } catch (e) {
+      invalidas++;
+    }
+  });
+  return invalidas;
 }
 
 export function renderRico(destino, texto) {
