@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Diagnóstico do Banco de Questões</title>
+  <style>
+    body { font-family: Verdana, system-ui, sans-serif; max-width: 52rem; margin: 0 auto; padding: 1rem; color: #12263A; background: #F3F6F8; line-height: 1.5; }
+    h1 { font-size: 1.5rem; margin-bottom: .25rem; }
+    h2 { font-size: 1.1rem; margin-top: 1.5rem; }
+    .resumo { padding: .9rem 1rem; border-radius: 10px; font-weight: bold; margin: 1rem 0; }
+    .resumo.ok { background: #E3F1F0; border: 2px solid #0F6B6B; }
+    .resumo.erro { background: #FBE9E4; border: 2px solid #B84A32; }
+    .resumo.espera { background: #fff; border: 2px solid #B9C4CE; }
+    ul { list-style: none; padding: 0; margin: 0; }
+    li { background: #fff; border: 1px solid #D5DDE4; border-radius: 10px; padding: .6rem .8rem; margin-bottom: .5rem; }
+    li.ok { border-left: 6px solid #0F6B6B; }
+    li.erro { border-left: 6px solid #B84A32; background: #FFF8F6; }
+    li.aviso { border-left: 6px solid #F2C14E; background: #FFFBEE; }
+    .arquivo { font-weight: bold; font-family: ui-monospace, Consolas, monospace; }
+    .dica { display: block; margin-top: .25rem; font-size: .92rem; color: #33475B; }
+    .tecnico { display: block; margin-top: .25rem; font-size: .8rem; color: #6B7C8B; word-break: break-word; }
+    code { background: #E8EDF1; padding: 0 .25rem; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Diagnóstico do Banco de Questões</h1>
+  <p>Esta página confere se cada arquivo do site é o certo e está no lugar certo. Ela não altera nada e não mostra dados de ninguém.</p>
+  <div id="resumo" class="resumo espera">Conferindo os arquivos…</div>
+
+  <h2>Arquivos do site (pasta js)</h2>
+  <ul id="modulos"></ul>
+
+  <h2>Outras conferências</h2>
+  <ul id="outras"></ul>
+
+  <h2>Arquivos que não deveriam estar no site</h2>
+  <ul id="sobras"></ul>
+
+  <p style="margin-top:1.5rem;font-size:.9rem;color:#33475B">
+    Depois de trocar arquivos no GitHub, espere cerca de 1 a 2 minutos e abra esta página de novo com a atualização forçada
+    (<code>Ctrl + F5</code> no computador; no celular, feche e abra a aba).
+  </p>
+
+  <script type="module">
+    // Arquivo -> o que ele precisa exportar. Se faltar algo, é o arquivo errado ou uma versão antiga.
+    const MODULOS = [
+      ["util.js", ["$", "$$", "el", "normalizar", "formatarData", "rotuloCargo"]],
+      ["curriculo.js", ["SEGMENTOS", "BIMESTRES", "TIPOS", "DIFICULDADES", "LETRAS"]],
+      ["formulas.js", ["normalizarFormulas", "extrairFormulas", "PADRAO_DELIMITADOR"]],
+      ["similaridade.js", ["similaridade"]],
+      ["rico.js", ["renderRico", "desenharImagem", "desenharQuestao", "contarFormulasInvalidas"]],
+      ["midia.js", ["reduzirImagem", "reduzirFonte", "reduzirDataUrl", "abrirImagem", "abrirImagemDeUrl", "salvarImagem", "persistirImagens", "obterImagem", "obterApoio", "guardarApoio", "listarApoios", "criarSeletorImagens"]],
+      ["dialogo.js", ["perguntar"]],
+      ["sessao.js", ["criarGuardaDeSessao", "MANTER_LOGIN_AO_FECHAR", "LIMITE_INATIVIDADE_MS"]],
+      ["katex-loader.js", ["garantirKatex"]],
+      ["firebase-config.js", ["firebaseConfig", "escola", "configurado"]],
+      ["ia-config.js", ["iaUrl", "iaConfigurada"]],
+      ["ia.js", ["chamarIA"]],
+      ["prova-render.js", ["renderizarProva", "renderizarGabarito", "formatarValor", "resolverQuestao"]],
+      ["questoes.js", ["iniciarQuestoes"]],
+      ["banco.js", ["iniciarBanco"]],
+      ["provas.js", ["iniciarProvas"]],
+      ["adaptar.js", ["iniciarAdaptar"]],
+      ["importar.js", ["iniciarImportar"]],
+      ["equipe.js", ["iniciarEquipe"]],
+      ["auditoria.js", ["iniciarAuditoria"]]
+    ];
+
+    // Arquivos antigos ou do servidor que não devem ficar no site.
+    const SOBRAS = [
+      ["js/importacao.js", "Versão antiga e insegura (guarda a chave da IA no navegador). Apague este arquivo."],
+      ["js/comum.js", "Este arquivo é do servidor (Vercel), não do site. Apague do site."],
+      ["js/servidor-comum.js", "Este arquivo é do servidor (Vercel), não do site. Apague do site."],
+      ["js/servidor-formulas.js", "Este arquivo é do servidor (Vercel), não do site. Apague do site."],
+      ["js/teste.js", "Arquivo de teste. Apague."],
+      ["api/teste.js", "Arquivo de teste. Apague."]
+    ];
+
+    const $ = (id) => document.getElementById(id);
+    let erros = 0;
+    let avisos = 0;
+
+    function linha(destino, estado, titulo, dica, tecnico) {
+      if (estado === "erro") erros++;
+      if (estado === "aviso") avisos++;
+      const li = document.createElement("li");
+      li.className = estado;
+      const t = document.createElement("span");
+      t.className = "arquivo";
+      t.textContent = (estado === "ok" ? "✔ " : estado === "erro" ? "✘ " : "⚠ ") + titulo;
+      li.appendChild(t);
+      if (dica) { const d = document.createElement("span"); d.className = "dica"; d.textContent = dica; li.appendChild(d); }
+      if (tecnico) { const x = document.createElement("span"); x.className = "tecnico"; x.textContent = "Detalhe técnico: " + tecnico; li.appendChild(x); }
+      $(destino).appendChild(li);
+    }
+
+    function explicar(nome, erro) {
+      const msg = String((erro && erro.message) || erro);
+      if (/module is not defined|exports is not defined|require is not defined/.test(msg)) {
+        return "Este arquivo é a versão do SERVIDOR (Vercel), não a do site. Use o arquivo de mesmo nome que está no pacote do SITE.";
+      }
+      if (/does not provide an export named/.test(msg)) {
+        return "O arquivo que usa este módulo espera algo que ele não oferece. Quase sempre é o arquivo errado (por exemplo, o do servidor no lugar do do site) ou uma versão antiga. Troque pelo arquivo correto do pacote do site.";
+      }
+      if (/Failed to fetch dynamically imported module|Failed to load module script|404/.test(msg)) {
+        return "O arquivo não foi encontrado ou não carregou. Confira se ele está na pasta js do site, com este nome exato.";
+      }
+      if (/Unexpected token|SyntaxError|Unexpected identifier/.test(msg)) {
+        return "O arquivo está com o conteúdo quebrado (incompleto ou de outro tipo). Envie de novo o arquivo correto do pacote do site.";
+      }
+      return "Não foi possível carregar este arquivo. Envie de novo o arquivo correto do pacote do site.";
+    }
+
+    async function conferirModulos() {
+      for (const [nome, exportacoes] of MODULOS) {
+        try {
+          const mod = await import(`./js/${nome}`);
+          const faltando = exportacoes.filter((e) => !(e in mod));
+          if (faltando.length === 0) {
+            linha("modulos", "ok", nome);
+          } else {
+            let dica = "Este arquivo não é a versão certa. Faltam: " + faltando.join(", ") + ".";
+            if (nome === "provas.js" && !("iniciarProvas" in mod) && "iniciarBanco" in mod) dica = "Este arquivo é uma cópia do banco.js. Envie o provas.js verdadeiro do pacote do site.";
+            if (nome === "formulas.js") dica = "Este arquivo parece ser a versão do servidor. Use o formulas.js do pacote do SITE.";
+            linha("modulos", "erro", nome, dica);
+          }
+        } catch (e) {
+          linha("modulos", "erro", nome, explicar(nome, e), String((e && e.message) || e).slice(0, 220));
+        }
+      }
+    }
+
+    async function textoDe(caminho) {
+      const r = await fetch(caminho + "?v=" + Date.now(), { cache: "no-store" });
+      return r.ok ? await r.text() : null;
+    }
+
+    async function conferirOutras() {
+      // app.js e index.html: versões atuais
+      const app = await textoDe("js/app.js");
+      if (app === null) linha("outras", "erro", "js/app.js", "Arquivo não encontrado.");
+      else if (!/iniciarAuditoria/.test(app) || !/garantirKatex/.test(app)) linha("outras", "erro", "js/app.js", "Versão antiga. Substitua pelo app.js do pacote do site.");
+      else if (!/iniciarProvas/.test(app)) linha("outras", "erro", "js/app.js", "Este app.js não tem as provas. Substitua pelo do pacote do site.");
+      else linha("outras", "ok", "js/app.js", "Versão atual.");
+
+      const index = await textoDe("index.html");
+      if (index === null) linha("outras", "erro", "index.html", "Arquivo não encontrado.");
+      else {
+        const faltam = ["area-banco", "area-nova", "area-importar", "area-provas", "area-adaptar", "area-equipe", "area-auditoria", "folha-impressao"].filter((id) => !index.includes(`id="${id}"`));
+        if (faltam.length) linha("outras", "erro", "index.html", "Versão antiga. Faltam as telas: " + faltam.join(", ") + ". Substitua pelo index.html do pacote do site.");
+        else linha("outras", "ok", "index.html", "Versão atual.");
+      }
+
+      // Configurações
+      try {
+        const cfg = await import("./js/firebase-config.js");
+        if (cfg.configurado) linha("outras", "ok", "Configuração do Firebase", "Preenchida.");
+        else linha("outras", "erro", "Configuração do Firebase", "Ainda está com os valores de exemplo. Preencha js/firebase-config.js com os dados do seu projeto.");
+      } catch (e) { /* já aparece na lista de arquivos */ }
+      try {
+        const ia = await import("./js/ia-config.js");
+        if (ia.iaConfigurada) linha("outras", "ok", "Endereço da IA (Vercel)", ia.iaUrl);
+        else linha("outras", "aviso", "Endereço da IA (Vercel)", "Ainda não preenchido em js/ia-config.js. A importação e a adaptação com IA não vão funcionar.");
+      } catch (e) { /* idem */ }
+
+      // Fórmulas: carregamento e teste de verdade
+      try {
+        const { garantirKatex } = await import("./js/katex-loader.js");
+        const ok = await garantirKatex();
+        if (!ok || !window.katex) {
+          linha("outras", "erro", "Leitor de fórmulas (KaTeX)", "Não carregou nem da pasta vendor/katex nem da internet. Verifique a conexão ou envie a pasta vendor.");
+        } else {
+          const alvo = document.createElement("span");
+          window.katex.render("\\frac{1}{2} + \\ce{H2O}", alvo, { throwOnError: true });
+          let local = false;
+          try { local = (await fetch("vendor/katex/katex.min.js", { method: "HEAD", cache: "no-store" })).ok; } catch (e) { /* sem pasta */ }
+          linha("outras", "ok", "Leitor de fórmulas (KaTeX)", local ? "Funcionando, usando a pasta vendor/katex do próprio site." : "Funcionando, usando a internet (a pasta vendor/katex não está no site; é opcional).");
+        }
+      } catch (e) {
+        linha("outras", "erro", "Leitor de fórmulas (KaTeX)", "Não foi possível testar.", String((e && e.message) || e).slice(0, 200));
+      }
+
+      // Padronização de fórmulas
+      try {
+        const { normalizarFormulas } = await import("./js/formulas.js");
+        const saida = normalizarFormulas("Se $x^2$ vale 9 e custa R$ 5,00");
+        if (saida === "Se \\(x^2\\) vale 9 e custa R$ 5,00") linha("outras", "ok", "Padronização de fórmulas", "Funcionando (converte $x^2$ e preserva R$ 5,00).");
+        else linha("outras", "erro", "Padronização de fórmulas", "O formulas.js está com comportamento diferente do esperado. Use o do pacote do site.", saida);
+      } catch (e) { /* já aparece acima */ }
+    }
+
+    async function conferirSobras() {
+      for (const [caminho, dica] of SOBRAS) {
+        try {
+          const r = await fetch(caminho + "?v=" + Date.now(), { cache: "no-store" });
+          if (r.ok) linha("sobras", "erro", caminho, dica);
+        } catch (e) { /* ausente: bom */ }
+      }
+      if (!$("sobras").children.length) linha("sobras", "ok", "Nenhuma sobra encontrada");
+    }
+
+    await conferirModulos();
+    if ($("modulos").querySelector("li.erro")) {
+      const nota = document.createElement("p");
+      nota.style.cssText = "font-size:.92rem;font-weight:bold;color:#8A3420";
+      nota.textContent = "Comece pelo PRIMEIRO item ✘ da lista: os de baixo podem estar com erro só porque dependem dele.";
+      $("modulos").before(nota);
+    }
+    await conferirOutras();
+    await conferirSobras();
+
+    const r = $("resumo");
+    if (erros === 0) {
+      r.className = "resumo ok";
+      r.textContent = avisos ? `Tudo certo nos arquivos. ${avisos} aviso(s) para ler abaixo.` : "Tudo certo: os arquivos do site estão corretos.";
+    } else {
+      r.className = "resumo erro";
+      r.textContent = `${erros} problema(s) encontrado(s). Corrija os itens marcados com ✘ abaixo.`;
+    }
+  </script>
+</body>
+</html>
