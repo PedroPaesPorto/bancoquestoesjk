@@ -1,0 +1,13 @@
+PACOTE DO SITE (GitHub Pages)
+=============================
+Este pacote é SÓ do site. Vai no repositório do GitHub Pages (o do endereço usuario.github.io/...).
+NÃO misture com o pacote da API (Vercel): vários arquivos têm nomes parecidos (adaptar.js, importar.js) mas são diferentes.
+
+Como atualizar
+1. Extraia o zip.
+2. No repositório do site: Add file > Upload files, e arraste o CONTEÚDO da pasta extraída
+   (index.html, diagnostico.html, firestore.rules e as pastas js e vendor). O GitHub substitui os arquivos que já existem.
+3. NÃO existe js/firebase-config.js neste pacote de propósito: mantenha o SEU, com os dados do seu projeto Firebase.
+4. Apague do repositório, se existirem: js/importacao.js, js/comum.js, js/servidor-comum.js, js/servidor-formulas.js.
+5. Espere 1 a 2 minutos e abra  .../diagnostico.html  para conferir se está tudo certo.
+6. Publique o arquivo firestore.rules em Firebase > Firestore Database > Regras (copie e cole, depois Publicar).
