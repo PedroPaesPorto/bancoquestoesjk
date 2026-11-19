@@ -104,7 +104,12 @@ async function verificarConta() {
   ultimaVerificacao = Date.now();
   try {
     const snap = await getDoc(doc(db, "users", estado.usuario.uid));
-    if (!snap.exists()) return;
+    if (!snap.exists()) {
+      // Perfil removido: trata como acesso revogado, em vez de continuar com a tela aberta.
+      sessionStorage.setItem("mensagemLogin", "Sua conta não foi encontrada. Procure a coordenação da escola.");
+      await sairDoSistema(null);
+      return;
+    }
     const novo = snap.data();
     if (novo.ativo !== true) {
       estado.perfil = novo;
