@@ -8,7 +8,7 @@
 // Também repara um defeito comum de JSON: \frac, \times, \beta e \neq com uma barra só viram
 // caracteres de controle (\f, \t, \b, \n) e a fórmula some. Dentro de \( \) e \[ \] eles voltam ao normal.
 
-const PADRAO_DELIMITADOR = /\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)/g;
+export const PADRAO_DELIMITADOR = /\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)/g;
 
 const COMANDOS_SOLTOS = [
   /\\ce\{(?:[^{}]|\{[^{}]*\})*\}/g,
@@ -73,7 +73,7 @@ function repararControles(texto) {
     .replace(/\u000D(?=(ight|ho)\b)/g, "\\r");
 }
 
-function normalizarFormulas(entrada) {
+export function normalizarFormulas(entrada) {
   if (typeof entrada !== "string" || entrada === "") return entrada || "";
   let t = repararControles(entrada);
 
@@ -101,7 +101,7 @@ function normalizarFormulas(entrada) {
 }
 
 // Lista as fórmulas de um texto: [{ expressao, destaque }]
-function extrairFormulas(texto) {
+export function extrairFormulas(texto) {
   const lista = [];
   const padrao = new RegExp(PADRAO_DELIMITADOR.source, "g");
   let achado;
@@ -111,5 +111,3 @@ function extrairFormulas(texto) {
   }
   return lista;
 }
-
-module.exports = { normalizarFormulas, extrairFormulas, PADRAO_DELIMITADOR };

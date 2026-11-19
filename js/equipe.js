@@ -18,10 +18,13 @@ export function iniciarEquipe(ctx) {
         <h1 class="text-2xl font-bold sm:text-3xl">Equipe</h1>
         <p class="mt-1 text-[#33475B]">Libere contas novas, defina cargos e passe as questões de quem saiu para outro professor.</p>
       </div>
-      <button type="button" id="e-atualizar"
-              class="rounded-[10px] border-2 border-petroleo px-4 py-2 font-bold text-petroleo hover:bg-petroleo-claro">
-        Atualizar
-      </button>
+      <div class="flex flex-wrap gap-2">
+        <a href="#auditoria" class="rounded-[10px] bg-petroleo px-4 py-2 font-bold text-white hover:bg-petroleo-escuro">Ver auditoria</a>
+        <button type="button" id="e-atualizar"
+                class="rounded-[10px] border-2 border-petroleo px-4 py-2 font-bold text-petroleo hover:bg-petroleo-claro">
+          Atualizar
+        </button>
+      </div>
     </div>
 
     <div id="e-estado" class="mt-5"></div>
